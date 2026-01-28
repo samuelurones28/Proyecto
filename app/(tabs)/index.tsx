@@ -5,7 +5,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../supabase';
 import ReactMarkdown from 'react-native-markdown-display';
 import { useTheme } from '../../components/ThemeContext';
-import { useWorkout } from '../../components/WorkoutContext'; // <--- NUEVO IMPORT
+import { useAuth } from '../../components/AuthContext';
+import { useWorkout } from '../../components/WorkoutContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 // --- CONFIGURACIÓN GROQ ---
@@ -14,7 +15,8 @@ const GROQ_MODEL = "llama-3.3-70b-versatile";
 
 export default function ChatScreen() {
   const { theme } = useTheme();
-  const { rutinaActiva } = useWorkout(); // <--- OBTENER ESTADO DE RUTINA
+  const { user } = useAuth();
+  const { rutinaActiva } = useWorkout();
   const systemScheme = useColorScheme();
   const [mensajes, setMensajes] = useState([
     { id: 1, texto: "⚡ Hola. Soy tu Arquitecto Fitness. ¿Creamos una rutina nueva o ajustamos la actual?", esUsuario: false }
@@ -63,22 +65,25 @@ export default function ChatScreen() {
   useFocusEffect(
       useCallback(() => {
         cargarContexto();
-      }, [])
+      }, [user])
   );
 
   const cargarContexto = async () => {
-    const { data: p } = await supabase.from('perfil').select('*').limit(1);
-    const { data: pl } = await supabase.from('planes_semanales').select('*').order('created_at', { ascending: false }).limit(1);
+    if (!user) return;
+    const { data: p } = await supabase.from('perfil').select('*').eq('user_id', user.id).limit(1);
+    const { data: pl } = await supabase.from('planes_semanales').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(1);
     setPerfil(p?.[0] || {});
     setPlan(pl?.[0]?.datos_semana || {});
   };
 
   const ejecutarHerramienta = async (comando) => {
+    if (!user) return "❌ Usuario no autenticado.";
     console.log("🛠️ GROQ EJECUTANDO:", comando.accion);
     try {
       if (comando.accion === "ACTUALIZAR_PLAN") {
-        const nuevoPlan = { ...plan, ...comando.datos }; 
+        const nuevoPlan = { ...plan, ...comando.datos };
         await supabase.from('planes_semanales').insert({
+          user_id: user.id,
           nombre: "Plan Modificado por Groq",
           datos_semana: nuevoPlan
         });
@@ -89,6 +94,7 @@ export default function ChatScreen() {
       if (comando.accion === "BLOQUEAR_DIA") {
         const { fecha, motivo } = comando.datos;
         await supabase.from('calendario_acciones').upsert({
+          user_id: user.id,
           fecha: fecha,
           estado: 'descanso_extra',
           nota: motivo

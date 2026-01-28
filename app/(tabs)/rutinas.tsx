@@ -1,12 +1,13 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { StyleSheet, Text, View, ScrollView, ActivityIndicator, TouchableOpacity, Alert, TextInput, KeyboardAvoidingView, Platform, Modal, SectionList, FlatList, Image, useColorScheme, Vibration, Dimensions, AppState } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { useRouter, useLocalSearchParams } from 'expo-router'; 
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { supabase } from '../../supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { LineChart } from 'react-native-chart-kit';
 import * as Notifications from 'expo-notifications';
 import { useWorkout } from '../../components/WorkoutContext';
+import { useAuth } from '../../components/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 // Configuración de notificaciones (esencial para iOS en primer plano)
@@ -22,15 +23,16 @@ const RAPID_API_KEY = process.env.EXPO_PUBLIC_RAPIDAPI_KEY;
 
 export default function RutinasScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams(); 
+  const params = useLocalSearchParams();
   const systemScheme = useColorScheme();
   const esOscuro = systemScheme === 'dark';
-  
-  const { 
-    rutinaActiva, 
-    tiempo, 
-    iniciarRutina, 
-    finalizarRutina, 
+  const { user } = useAuth();
+
+  const {
+    rutinaActiva,
+    tiempo,
+    iniciarRutina,
+    finalizarRutina,
     setRutinaActiva
   } = useWorkout();
 
@@ -98,7 +100,7 @@ export default function RutinasScreen() {
 
   const musculosDisponibles = ["Todos", "Pecho", "Espalda", "Pierna", "Hombro", "Bíceps", "Tríceps", "Abdominales", "Cardio", "Otro"];
 
-  useFocusEffect(useCallback(() => { cargarTodo(); }, []));
+  useFocusEffect(useCallback(() => { cargarTodo(); }, [user]));
   
   useEffect(() => { 
       if (rutinaActiva && rutinaActiva.ejercicios) { cargarHistorialPrevio(rutinaActiva.ejercicios); } 
@@ -257,18 +259,20 @@ export default function RutinasScreen() {
 
   // --- DATOS ---
   const cargarTodo = async () => {
+    if (!user) return;
     setCargando(true);
     await Promise.all([cargarPlanIA(), cargarMisRutinas(), cargarCatalogoLocal()]);
     setCargando(false);
   };
 
   const cargarPlanIA = async () => {
+    if (!user) return;
     const diasSemana = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
     const hoyIndex = new Date().getDay();
     const hoyNombre = diasSemana[hoyIndex];
     setDiaHoyNombre(hoyNombre.charAt(0).toUpperCase() + hoyNombre.slice(1));
 
-    const { data } = await supabase.from('planes_semanales').select('*').order('created_at', { ascending: false }).limit(1);
+    const { data } = await supabase.from('planes_semanales').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(1);
     if (data && data[0]) {
         const plan = data[0].datos_semana || {};
         setPlanSemanal(plan);
@@ -278,7 +282,8 @@ export default function RutinasScreen() {
   };
 
   const cargarMisRutinas = async () => {
-      const { data } = await supabase.from('rutinas_personalizadas').select('*').order('created_at', { ascending: false });
+      if (!user) return;
+      const { data } = await supabase.from('rutinas_personalizadas').select('*').eq('user_id', user.id).order('created_at', { ascending: false });
       setMisRutinas(data || []);
   };
 
@@ -346,14 +351,14 @@ export default function RutinasScreen() {
   };
 
   const cargarHistorialPrevio = async (ejercicios) => {
-    if (!ejercicios || ejercicios.length === 0) return;
+    if (!ejercicios || ejercicios.length === 0 || !user) return;
     const nombres = ejercicios.map(e => e.nombre);
     const historialMap = {};
     for (const nombre of nombres) {
-        const { data: ultFechas } = await supabase.from('historial_series').select('fecha').eq('ejercicio', nombre).order('fecha', { ascending: false }).limit(1);
+        const { data: ultFechas } = await supabase.from('historial_series').select('fecha').eq('user_id', user.id).eq('ejercicio', nombre).order('fecha', { ascending: false }).limit(1);
         if (ultFechas && ultFechas.length > 0) {
             const fechaUltima = ultFechas[0].fecha;
-            const { data: seriesPrevias } = await supabase.from('historial_series').select('serie_index, kg, reps').eq('ejercicio', nombre).eq('fecha', fechaUltima).order('serie_index', { ascending: true });
+            const { data: seriesPrevias } = await supabase.from('historial_series').select('serie_index, kg, reps').eq('user_id', user.id).eq('ejercicio', nombre).eq('fecha', fechaUltima).order('serie_index', { ascending: true });
             if (seriesPrevias) historialMap[nombre] = seriesPrevias;
         }
     }
@@ -361,9 +366,10 @@ export default function RutinasScreen() {
   };
 
   const abrirEstadisticas = async (nombreEjercicio) => {
+    if (!user) return;
     setModalStatsVisible(true); setLoadingStats(true); setStatsEjercicio({ nombre: nombreEjercicio, pr: 0, max1rm: 0 });
     try {
-        const { data } = await supabase.from('historial_series').select('kg, reps, fecha').eq('ejercicio', nombreEjercicio).order('fecha', { ascending: true });
+        const { data } = await supabase.from('historial_series').select('kg, reps, fecha').eq('user_id', user.id).eq('ejercicio', nombreEjercicio).order('fecha', { ascending: true });
         if (data && data.length > 0) {
             let maxPeso = 0; let max1RM = 0;
             const dataProcesada = data.map(item => {
@@ -395,8 +401,8 @@ export default function RutinasScreen() {
   };
 
   const crearNuevaRutina = async () => {
-      if (!nombreNuevaRutina.trim()) return;
-      const nueva = { nombre: nombreNuevaRutina, ejercicios: [] };
+      if (!nombreNuevaRutina.trim() || !user) return;
+      const nueva = { user_id: user.id, nombre: nombreNuevaRutina, ejercicios: [] };
       const { data, error } = await supabase.from('rutinas_personalizadas').insert(nueva).select();
       if (!error && data) {
           setModalNombreRutinaVisible(false); setNombreNuevaRutina(''); 
@@ -406,36 +412,37 @@ export default function RutinasScreen() {
   };
 
   const guardarCambiosRutinaActiva = async () => {
-      if (!rutinaActiva) return;
+      if (!rutinaActiva || !user) return;
       if (rutinaActiva.esPersonalizada && rutinaActiva.id) {
           const ejerciciosParaGuardar = rutinaActiva.ejercicios.map(e => ({ nombre: e.nombre, series: e.metaInfo?.series, reps: e.metaInfo?.reps, tip: e.tip, gifUrl: e.gifUrl }));
-          await supabase.from('rutinas_personalizadas').update({ ejercicios: ejerciciosParaGuardar }).eq('id', rutinaActiva.id);
+          await supabase.from('rutinas_personalizadas').update({ ejercicios: ejerciciosParaGuardar }).eq('id', rutinaActiva.id).eq('user_id', user.id);
           Alert.alert("Guardado", "Rutina actualizada."); cargarMisRutinas();
       } else { Alert.alert("Info", "Cambios temporales guardados en sesión."); }
   };
 
   const eliminarRutinaPersonalizada = async (id) => {
-      Alert.alert("Eliminar", "¿Borrar?", [{ text: "Cancelar" }, { text: "Borrar", style: 'destructive', onPress: async () => { await supabase.from('rutinas_personalizadas').delete().eq('id', id); cargarMisRutinas(); }}]);
+      Alert.alert("Eliminar", "¿Borrar?", [{ text: "Cancelar" }, { text: "Borrar", style: 'destructive', onPress: async () => { if (user) { await supabase.from('rutinas_personalizadas').delete().eq('id', id).eq('user_id', user.id); cargarMisRutinas(); } }}]);
   };
 
   const finalizarEntreno = async () => {
+    if (!user) return;
     Alert.alert("¿Terminar?", `Tiempo total: ${formatearTiempo(tiempo)}. Se guardarán tus series.`, [
-        { text: "Seguir" }, 
+        { text: "Seguir" },
         { text: "Finalizar", onPress: async () => {
             finalizarRutina(async (tiempoFinal, rutinaFinalizada) => {
                 setCargando(true);
                 try {
                     const hoyISO = new Date().toISOString().split('T')[0];
                     const seriesParaGuardar = [];
-                    rutinaFinalizada.ejercicios.forEach(ej => { 
-                        ej.seriesDetalladas.forEach((serie, index) => { 
-                            if (serie.kg && serie.reps) seriesParaGuardar.push({ fecha: hoyISO, ejercicio: ej.nombre, serie_index: index + 1, kg: parseFloat(serie.kg), reps: parseFloat(serie.reps) }); 
-                        }); 
+                    rutinaFinalizada.ejercicios.forEach(ej => {
+                        ej.seriesDetalladas.forEach((serie, index) => {
+                            if (serie.kg && serie.reps) seriesParaGuardar.push({ user_id: user.id, fecha: hoyISO, ejercicio: ej.nombre, serie_index: index + 1, kg: parseFloat(serie.kg), reps: parseFloat(serie.reps) });
+                        });
                     });
                     if (seriesParaGuardar.length > 0) await supabase.from('historial_series').insert(seriesParaGuardar);
-                    if (!rutinaFinalizada.esPersonalizada) await supabase.from('calendario_acciones').upsert({ fecha: hoyISO, estado: 'completado' });
-                    Alert.alert("¡Hecho!", "Entrenamiento registrado.");
-                    setVistaEntrenoExpandida(false); // Volver a la lista
+                    if (!rutinaFinalizada.esPersonalizada) await supabase.from('calendario_acciones').upsert({ user_id: user.id, fecha: hoyISO, estado: 'completado' });
+                    Alert.alert("Hecho", "Entrenamiento registrado.");
+                    setVistaEntrenoExpandida(false);
                 } catch (e) { Alert.alert("Error", e.message); } finally { setCargando(false); }
             });
         }}

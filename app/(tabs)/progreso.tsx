@@ -5,7 +5,8 @@ import { supabase } from '../../supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { LineChart } from 'react-native-chart-kit';
 import { useTheme } from '../../components/ThemeContext';
-import { useWorkout } from '../../components/WorkoutContext'; // <--- IMPORTANTE
+import { useAuth } from '../../components/AuthContext';
+import { useWorkout } from '../../components/WorkoutContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 interface Colores {
@@ -33,7 +34,8 @@ interface Medicion {
 
 export default function ProgresoScreen() {
   const { theme } = useTheme();
-  const { rutinaActiva } = useWorkout(); // <--- Detectamos si la barra azul existe
+  const { user } = useAuth();
+  const { rutinaActiva } = useWorkout();
   const systemScheme = useColorScheme();
   const esOscuro = theme === 'dark' ? true : theme === 'light' ? false : systemScheme === 'dark';
   
@@ -67,20 +69,21 @@ export default function ProgresoScreen() {
   useFocusEffect(
     useCallback(() => {
       cargarDatos();
-    }, [])
+    }, [user])
   );
 
   const cargarDatos = async () => {
+    if (!user) return;
     setCargando(true);
     try {
-      const { data, error } = await supabase.from('mediciones').select('*').order('fecha', { ascending: false });
+      const { data, error } = await supabase.from('mediciones').select('*').eq('user_id', user.id).order('fecha', { ascending: false });
       if (error) throw error;
       setMediciones(data || []);
     } catch (error) { console.error('Error:', (error as Error).message); } finally { setCargando(false); }
   };
 
   const guardarNuevaMedicion = async () => {
-    if (!nuevoPeso) { Alert.alert("Falta el peso", "Introduce al menos el peso."); return; }
+    if (!nuevoPeso || !user) { Alert.alert("Falta el peso", "Introduce al menos el peso."); return; }
     setGuardando(true);
     try {
       const pesoNum = parseFloat(nuevoPeso.replace(',', '.'));
@@ -90,7 +93,7 @@ export default function ProgresoScreen() {
       if (grasaPorc) grasaKg = (pesoNum * (grasaPorc / 100)).toFixed(2);
       if (musculoKg) musculoPorc = ((musculoKg / pesoNum) * 100).toFixed(2);
 
-      const { error } = await supabase.from('mediciones').insert({ fecha: new Date().toISOString(), peso: pesoNum, grasa_porc: grasaPorc, grasa_kg: grasaKg, musculo_kg: musculoKg, musculo_porc: musculoPorc });
+      const { error } = await supabase.from('mediciones').insert({ user_id: user.id, fecha: new Date().toISOString(), peso: pesoNum, grasa_porc: grasaPorc, grasa_kg: grasaKg, musculo_kg: musculoKg, musculo_porc: musculoPorc });
       if (error) throw error;
       setModalVisible(false); setNuevoPeso(''); setNuevaGrasa(''); setNuevoMusculo(''); cargarDatos(); Alert.alert("¡Guardado!", "Progreso registrado.");
     } catch (e) { Alert.alert("Error", (e as Error).message); } finally { setGuardando(false); }

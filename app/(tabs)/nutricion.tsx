@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../supabase';
 import BarcodeScanner from '../../components/BarcodeScanner';
 import { useWorkout } from '../../components/WorkoutContext';
+import { useAuth } from '../../components/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 // --- CONFIGURACIÓN GROQ ---
@@ -15,6 +16,7 @@ const GROQ_MODEL = "llama-3.3-70b-versatile";
 const GROQ_VISION_MODEL = "llama-3.2-11b-vision-preview"; 
 
 export default function NutricionScreen() {
+  const { user } = useAuth();
   const systemScheme = useColorScheme();
   const esOscuro = systemScheme === 'dark';
   
@@ -49,16 +51,17 @@ export default function NutricionScreen() {
   const [alimentoTemp, setAlimentoTemp] = useState(null); 
   const [modoBusqueda, setModoBusqueda] = useState('recientes');
 
-  useFocusEffect(useCallback(() => { inicializarPantalla(); }, []));
+  useFocusEffect(useCallback(() => { inicializarPantalla(); }, [user]));
 
-  const inicializarPantalla = async () => { await Promise.all([cargarDiario(), calcularMetasDiarias()]); };
+  const inicializarPantalla = async () => { if (!user) return; await Promise.all([cargarDiario(), calcularMetasDiarias()]); };
   
   const calcularMetasDiarias = async () => {
+    if (!user) return;
     try {
-      const { data: perfilData } = await supabase.from('perfil').select('*').order('created_at', { ascending: false }).limit(1);
-      const { data: medicionData } = await supabase.from('mediciones').select('peso, grasa_porc').order('fecha', { ascending: false }).limit(1);
+      const { data: perfilData } = await supabase.from('perfil').select('*').eq('user_id', user.id).limit(1);
+      const { data: medicionData } = await supabase.from('mediciones').select('peso, grasa_porc').eq('user_id', user.id).order('fecha', { ascending: false }).limit(1);
       const hoyISO = new Date().toISOString().split('T')[0];
-      const { data: calendarioData } = await supabase.from('calendario_acciones').select('estado').eq('fecha', hoyISO).maybeSingle();
+      const { data: calendarioData } = await supabase.from('calendario_acciones').select('estado').eq('user_id', user.id).eq('fecha', hoyISO).maybeSingle();
 
       const usuario = perfilData?.[0] || {};
       const tieneManual = (usuario.meta_kcal && parseFloat(usuario.meta_kcal) > 0);
@@ -80,7 +83,7 @@ export default function NutricionScreen() {
       const hoyNombre = diasSemana[new Date().getDay()]; 
       const diasProhibidos = (usuario.dias_no_disponibles || "").toLowerCase();
 
-      const { data: planData } = await supabase.from('planes_semanales').select('datos_semana').order('created_at', { ascending: false }).limit(1);
+      const { data: planData } = await supabase.from('planes_semanales').select('datos_semana').eq('user_id', user.id).order('created_at', { ascending: false }).limit(1);
       
       let entrenoHoy = false;
 
@@ -118,9 +121,10 @@ export default function NutricionScreen() {
   };
 
   const cargarDiario = async () => {
+    if (!user) return;
     const hoy = new Date();
     const hoyISO = new Date(Date.UTC(hoy.getFullYear(), hoy.getMonth(), hoy.getDate())).toISOString();
-    const { data } = await supabase.from('comidas').select('*').gte('created_at', hoyISO).order('created_at', { ascending: false });
+    const { data } = await supabase.from('comidas').select('*').eq('user_id', user.id).gte('created_at', hoyISO).order('created_at', { ascending: false });
     if (data) { setComidasHoy(data); calcularResumen(data); }
   };
 
@@ -249,22 +253,24 @@ export default function NutricionScreen() {
   };
 
   const cargarRecientes = async () => {
+    if (!user) return;
     setModoBusqueda('recientes');
     setTextoBusqueda('');
-    const { data } = await supabase.from('comidas').select('nombre, datos_base, peso_porcion').order('created_at', { ascending: false }).limit(50);
+    const { data } = await supabase.from('comidas').select('nombre, datos_base, peso_porcion').eq('user_id', user.id).order('created_at', { ascending: false }).limit(50);
     if (data) filtrarYSetearResultados(data);
   };
 
   const buscarEnHistorial = async (texto) => {
+    if (!user) return;
     setTextoBusqueda(texto);
     if (texto.length === 0) { cargarRecientes(); return; }
     if (texto.length < 2) { setResultadosBusqueda([]); return; }
     setModoBusqueda('busqueda');
     try {
-        const { data: dataSearch, error } = await supabase.from('comidas').select('nombre, datos_base, peso_porcion').textSearch('nombre', `'${texto}'`, { config: 'spanish', type: 'websearch' }).limit(15);
+        const { data: dataSearch, error } = await supabase.from('comidas').select('nombre, datos_base, peso_porcion').eq('user_id', user.id).textSearch('nombre', `'${texto}'`, { config: 'spanish', type: 'websearch' }).limit(15);
         if (!error && dataSearch && dataSearch.length > 0) { filtrarYSetearResultados(dataSearch); return; }
     } catch (e) {}
-    const { data } = await supabase.from('comidas').select('nombre, datos_base, peso_porcion').ilike('nombre', `%${texto}%`).limit(15);
+    const { data } = await supabase.from('comidas').select('nombre, datos_base, peso_porcion').eq('user_id', user.id).ilike('nombre', `%${texto}%`).limit(15);
     if (data) filtrarYSetearResultados(data);
   };
 
@@ -346,31 +352,33 @@ export default function NutricionScreen() {
       }
   };
 
-  const guardarEnDB = async () => { 
-    const { nombre, cantidad, macros_100g, macros_finales, id, peso_porcion } = alimentoTemp; 
+  const guardarEnDB = async () => {
+    if (!user) return;
+    const { nombre, cantidad, macros_100g, macros_finales, id, peso_porcion } = alimentoTemp;
     const cleanFloat = (val) => { if (typeof val === 'string') return parseFloat(val.replace(',', '.')) || 0; return parseFloat(val) || 0; };
     const macrosLimpios = { kcal: cleanFloat(macros_100g.kcal), p: cleanFloat(macros_100g.p), c: cleanFloat(macros_100g.c), f: cleanFloat(macros_100g.f) };
-    const d = { 
-      nombre, 
-      cantidad: cleanFloat(cantidad), 
-      peso_porcion: cleanFloat(peso_porcion), 
-      unidad: 'g', 
-      datos_base: macrosLimpios, 
-      calorias: parseFloat(macros_finales.kcal), 
-      proteinas: parseFloat(macros_finales.p), 
-      carbos: parseFloat(macros_finales.c), 
-      grasas: parseFloat(macros_finales.f) 
-    }; 
-    
+    const d = {
+      user_id: user.id,
+      nombre,
+      cantidad: cleanFloat(cantidad),
+      peso_porcion: cleanFloat(peso_porcion),
+      unidad: 'g',
+      datos_base: macrosLimpios,
+      calorias: parseFloat(macros_finales.kcal),
+      proteinas: parseFloat(macros_finales.p),
+      carbos: parseFloat(macros_finales.c),
+      grasas: parseFloat(macros_finales.f)
+    };
+
     let error;
-    if (id) { const res = await supabase.from('comidas').update(d).eq('id', id); error = res.error; } 
+    if (id) { const res = await supabase.from('comidas').update(d).eq('id', id).eq('user_id', user.id); error = res.error; }
     else { const res = await supabase.from('comidas').insert(d); error = res.error; }
 
-    if (error) { Alert.alert("Error al guardar", error.message); } 
+    if (error) { Alert.alert("Error al guardar", error.message); }
     else { setModalEditVisible(false); cargarDiario(); }
   };
 
-  const borrarComida = async (id) => { Alert.alert("Borrar", "¿Seguro?", [{text:"Cancelar"}, {text:"Sí", style:"destructive", onPress: async ()=>{ await supabase.from('comidas').delete().eq('id', id); cargarDiario(); }}]); };
+  const borrarComida = async (id) => { Alert.alert("Borrar", "¿Seguro?", [{text:"Cancelar"}, {text:"Sí", style:"destructive", onPress: async ()=>{ if (user) { await supabase.from('comidas').delete().eq('id', id).eq('user_id', user.id); cargarDiario(); } }}]); };
 
   const BotonFooter = ({icon, text, color, onPress}) => (<TouchableOpacity style={[styles.botonFooter, {backgroundColor: color === '#333' && esOscuro ? '#444' : color}]} onPress={onPress}><Ionicons name={icon} size={20} color="white" /><Text style={styles.textFooter}>{text}</Text></TouchableOpacity>);
   

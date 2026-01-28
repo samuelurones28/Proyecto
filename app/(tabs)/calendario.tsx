@@ -5,6 +5,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { supabase } from '../../supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../components/ThemeContext';
+import { useAuth } from '../../components/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 // --- CONFIGURACIÓN GROQ ---
@@ -22,6 +23,7 @@ LocaleConfig.defaultLocale = 'es';
 
 export default function CalendarioScreen() {
   const { theme } = useTheme();
+  const { user } = useAuth();
   const systemScheme = useColorScheme();
   const esOscuro = theme === 'dark' ? true : theme === 'light' ? false : systemScheme === 'dark';
   const colores = {
@@ -54,16 +56,17 @@ export default function CalendarioScreen() {
   useFocusEffect(
     useCallback(() => {
       cargarDatosIniciales();
-    }, [])
+    }, [user])
   );
 
   const cargarDatosIniciales = async () => {
+    if (!user) return;
     setCargando(true);
     try {
       const [resPerfil, resPlan, resHistorial] = await Promise.all([
-        supabase.from('perfil').select('*').limit(1),
-        supabase.from('planes_semanales').select('*').order('created_at', { ascending: false }).limit(1),
-        supabase.from('calendario_acciones').select('*')
+        supabase.from('perfil').select('*').eq('user_id', user.id).limit(1),
+        supabase.from('planes_semanales').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(1),
+        supabase.from('calendario_acciones').select('*').eq('user_id', user.id)
       ]);
 
       datosRef.current.perfil = resPerfil.data?.[0] || {};
@@ -168,8 +171,10 @@ export default function CalendarioScreen() {
     Alert.alert("Quitar Descanso", "¿Liberar este día?", [
         { text: "Cancelar" },
         { text: "Eliminar", style: 'destructive', onPress: async () => {
-            await supabase.from('calendario_acciones').delete().eq('fecha', selectedDate);
-            cargarDatosIniciales();
+            if (user) {
+              await supabase.from('calendario_acciones').delete().eq('fecha', selectedDate).eq('user_id', user.id);
+              cargarDatosIniciales();
+            }
         }}
     ]);
   };
@@ -178,9 +183,11 @@ export default function CalendarioScreen() {
     Alert.alert("Borrar Entrenamiento", "Se eliminará el registro y los datos de series de este día.", [
         { text: "Cancelar" },
         { text: "Eliminar", style: 'destructive', onPress: async () => {
-            await supabase.from('calendario_acciones').delete().match({ fecha: selectedDate, estado: 'completado' });
-            await supabase.from('historial_series').delete().eq('fecha', selectedDate);
-            cargarDatosIniciales(); 
+            if (user) {
+              await supabase.from('calendario_acciones').delete().match({ fecha: selectedDate, estado: 'completado', user_id: user.id });
+              await supabase.from('historial_series').delete().eq('fecha', selectedDate).eq('user_id', user.id);
+              cargarDatosIniciales();
+            }
         }}
     ]);
   };
@@ -193,10 +200,11 @@ export default function CalendarioScreen() {
   };
 
   const ejecutarRecalculoGroq = async () => {
+    if (!user) return;
     setCargandoIA(true);
     try {
-      await supabase.from('calendario_acciones').upsert({ fecha: selectedDate, estado: 'descanso_extra' });
-      
+      await supabase.from('calendario_acciones').upsert({ user_id: user.id, fecha: selectedDate, estado: 'descanso_extra' });
+
       const prompt = `
         ACTÚA COMO ENTRENADOR.
         PLAN ACTUAL: ${JSON.stringify(datosRef.current.plan)}
@@ -217,13 +225,13 @@ export default function CalendarioScreen() {
 
       const data = await response.json();
       const content = data.choices[0]?.message?.content || "";
-      
+
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const nuevoPlan = JSON.parse(jsonMatch[0]);
-        await supabase.from('planes_semanales').insert({ nombre: "Ajuste Groq", datos_semana: nuevoPlan.dias || nuevoPlan.datos_semana });
+        await supabase.from('planes_semanales').insert({ user_id: user.id, nombre: "Ajuste Groq", datos_semana: nuevoPlan.dias || nuevoPlan.datos_semana });
         cargarDatosIniciales();
-        Alert.alert("Plan Ajustado ⚡", "Groq ha reorganizado tu semana.");
+        Alert.alert("Plan Ajustado", "Groq ha reorganizado tu semana.");
       }
     } catch (e) { Alert.alert("Error Groq", e.message); } finally { setCargandoIA(false); }
   };
