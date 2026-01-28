@@ -36,10 +36,6 @@ ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCAD
 ALTER TABLE comidas
 ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
 
--- Tabla: historial_entrenamientos
-ALTER TABLE historial_entrenamientos
-ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
-
 -- Tabla: historial_series
 ALTER TABLE historial_series
 ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
@@ -57,7 +53,6 @@ ALTER TABLE mediciones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE planes_semanales ENABLE ROW LEVEL SECURITY;
 ALTER TABLE calendario_acciones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE comidas ENABLE ROW LEVEL SECURITY;
-ALTER TABLE historial_entrenamientos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE historial_series ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rutinas_personalizadas ENABLE ROW LEVEL SECURITY;
 
@@ -93,10 +88,6 @@ DROP POLICY IF EXISTS "Users can view own comidas" ON comidas;
 DROP POLICY IF EXISTS "Users can insert own comidas" ON comidas;
 DROP POLICY IF EXISTS "Users can update own comidas" ON comidas;
 DROP POLICY IF EXISTS "Users can delete own comidas" ON comidas;
-
-DROP POLICY IF EXISTS "Users can view own historial_entrenamientos" ON historial_entrenamientos;
-DROP POLICY IF EXISTS "Users can insert own historial_entrenamientos" ON historial_entrenamientos;
-DROP POLICY IF EXISTS "Users can delete own historial_entrenamientos" ON historial_entrenamientos;
 
 DROP POLICY IF EXISTS "Users can view own historial_series" ON historial_series;
 DROP POLICY IF EXISTS "Users can insert own historial_series" ON historial_series;
@@ -185,18 +176,6 @@ CREATE POLICY "Users can delete own comidas" ON comidas
     FOR DELETE USING (auth.uid() = user_id);
 
 -- =====================================================
--- POLÍTICAS PARA: historial_entrenamientos
--- =====================================================
-CREATE POLICY "Users can view own historial_entrenamientos" ON historial_entrenamientos
-    FOR SELECT USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert own historial_entrenamientos" ON historial_entrenamientos
-    FOR INSERT WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete own historial_entrenamientos" ON historial_entrenamientos
-    FOR DELETE USING (auth.uid() = user_id);
-
--- =====================================================
 -- POLÍTICAS PARA: historial_series
 -- =====================================================
 CREATE POLICY "Users can view own historial_series" ON historial_series
@@ -238,7 +217,6 @@ CREATE INDEX IF NOT EXISTS idx_mediciones_user_id ON mediciones(user_id);
 CREATE INDEX IF NOT EXISTS idx_planes_semanales_user_id ON planes_semanales(user_id);
 CREATE INDEX IF NOT EXISTS idx_calendario_acciones_user_id ON calendario_acciones(user_id);
 CREATE INDEX IF NOT EXISTS idx_comidas_user_id ON comidas(user_id);
-CREATE INDEX IF NOT EXISTS idx_historial_entrenamientos_user_id ON historial_entrenamientos(user_id);
 CREATE INDEX IF NOT EXISTS idx_historial_series_user_id ON historial_series(user_id);
 CREATE INDEX IF NOT EXISTS idx_rutinas_personalizadas_user_id ON rutinas_personalizadas(user_id);
 
