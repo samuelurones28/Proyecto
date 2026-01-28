@@ -8,10 +8,7 @@ import { useTheme } from '../../components/ThemeContext';
 import { useAuth } from '../../components/AuthContext';
 import { useWorkout } from '../../components/WorkoutContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
-// --- CONFIGURACIÓN GROQ ---
-const GROQ_API_KEY = process.env.EXPO_PUBLIC_GROQ_API_KEY;
-const GROQ_MODEL = "llama-3.3-70b-versatile";
+import { GROQ_API_KEY, GROQ_MODEL } from '../../config';
 
 export default function ChatScreen() {
   const { theme } = useTheme();

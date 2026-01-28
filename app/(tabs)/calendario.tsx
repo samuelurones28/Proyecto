@@ -7,10 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../components/ThemeContext';
 import { useAuth } from '../../components/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
-// --- CONFIGURACIÓN GROQ ---
-const GROQ_API_KEY = process.env.EXPO_PUBLIC_GROQ_API_KEY;
-const GROQ_MODEL = "llama-3.3-70b-versatile";
+import { GROQ_API_KEY, GROQ_MODEL } from '../../config';
 
 LocaleConfig.locales['es'] = {
   monthNames: ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'],

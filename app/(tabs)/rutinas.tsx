@@ -9,6 +9,7 @@ import * as Notifications from 'expo-notifications';
 import { useWorkout } from '../../components/WorkoutContext';
 import { useAuth } from '../../components/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { RAPIDAPI_KEY } from '../../config';
 
 // Configuración de notificaciones (esencial para iOS en primer plano)
 Notifications.setNotificationHandler({
@@ -17,9 +18,7 @@ Notifications.setNotificationHandler({
     shouldPlaySound: true,
     shouldSetBadge: false,
   }),
-});
-
-const RAPID_API_KEY = process.env.EXPO_PUBLIC_RAPIDAPI_KEY; 
+}); 
 
 export default function RutinasScreen() {
   const router = useRouter();
@@ -303,7 +302,7 @@ export default function RutinasScreen() {
         const response = await fetch(`https://exercisedb.p.rapidapi.com/exercises/name/${texto.toLowerCase()}?limit=15`, {
             method: 'GET',
             headers: {
-                'X-RapidAPI-Key': RAPID_API_KEY,
+                'X-RapidAPI-Key': RAPIDAPI_KEY,
                 'X-RapidAPI-Host': 'exercisedb.p.rapidapi.com'
             }
         });

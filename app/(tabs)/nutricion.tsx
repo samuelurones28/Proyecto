@@ -9,11 +9,8 @@ import BarcodeScanner from '../../components/BarcodeScanner';
 import { useWorkout } from '../../components/WorkoutContext';
 import { useAuth } from '../../components/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
-// --- CONFIGURACIÓN GROQ ---
-const GROQ_API_KEY = process.env.EXPO_PUBLIC_GROQ_API_KEY;
-const GROQ_MODEL = "llama-3.3-70b-versatile";
-const GROQ_VISION_MODEL = "llama-3.2-11b-vision-preview"; 
+import { GROQ_API_KEY, GROQ_MODEL, GROQ_VISION_MODEL } from '../../config';
+import { sanitizeFullTextSearch, sanitizeILike } from '../../utils/sanitize'; 
 
 export default function NutricionScreen() {
   const { user } = useAuth();
@@ -266,11 +263,16 @@ export default function NutricionScreen() {
     if (texto.length === 0) { cargarRecientes(); return; }
     if (texto.length < 2) { setResultadosBusqueda([]); return; }
     setModoBusqueda('busqueda');
+
+    // Sanitizar input antes de usar en queries
+    const textoSanitizado = sanitizeFullTextSearch(texto);
+    const textoILike = sanitizeILike(texto);
+
     try {
-        const { data: dataSearch, error } = await supabase.from('comidas').select('nombre, datos_base, peso_porcion').eq('user_id', user.id).textSearch('nombre', `'${texto}'`, { config: 'spanish', type: 'websearch' }).limit(15);
+        const { data: dataSearch, error } = await supabase.from('comidas').select('nombre, datos_base, peso_porcion').eq('user_id', user.id).textSearch('nombre', textoSanitizado, { config: 'spanish', type: 'websearch' }).limit(15);
         if (!error && dataSearch && dataSearch.length > 0) { filtrarYSetearResultados(dataSearch); return; }
     } catch (e) {}
-    const { data } = await supabase.from('comidas').select('nombre, datos_base, peso_porcion').eq('user_id', user.id).ilike('nombre', `%${texto}%`).limit(15);
+    const { data } = await supabase.from('comidas').select('nombre, datos_base, peso_porcion').eq('user_id', user.id).ilike('nombre', `%${textoILike}%`).limit(15);
     if (data) filtrarYSetearResultados(data);
   };
 
