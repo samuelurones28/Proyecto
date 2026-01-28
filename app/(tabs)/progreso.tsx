@@ -1,24 +1,16 @@
 import React, { useState, useCallback } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Dimensions, Modal, TextInput, KeyboardAvoidingView, Platform, useColorScheme } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Alert, ActivityIndicator, Dimensions, Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { LineChart } from 'react-native-chart-kit';
-import { useTheme } from '../../components/ThemeContext';
 import { useAuth } from '../../components/AuthContext';
 import { useWorkout } from '../../components/WorkoutContext';
+import { useAppColors, AppColors } from '../../hooks/useAppColors';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-interface Colores {
-  fondo: string;
-  tarjeta: string;
-  texto: string;
-  subtexto: string;
-  borde: string;
-  primario: string;
-  danger: string;
+interface ColoresExtendidos extends AppColors {
   filterBg: string;
-  inputBg: string;
   btnCancelBg: string;
 }
 
@@ -33,22 +25,14 @@ interface Medicion {
 }
 
 export default function ProgresoScreen() {
-  const { theme } = useTheme();
   const { user } = useAuth();
   const { rutinaActiva } = useWorkout();
-  const systemScheme = useColorScheme();
-  const esOscuro = theme === 'dark' ? true : theme === 'light' ? false : systemScheme === 'dark';
-  
-  const colores: Colores = {
-    fondo: esOscuro ? '#000000' : '#f2f2f7',
-    tarjeta: esOscuro ? '#1c1c1e' : '#ffffff',
-    texto: esOscuro ? '#ffffff' : '#1c1c1e',
-    subtexto: esOscuro ? '#8e8e93' : '#8e8e93',
-    borde: esOscuro ? '#2c2c2e' : '#eee',
-    primario: '#007AFF',
-    danger: '#FF3B30',
+  const { esOscuro, colores: baseColores } = useAppColors();
+
+  // Extender colores base con colores específicos de esta pantalla
+  const colores: ColoresExtendidos = {
+    ...baseColores,
     filterBg: esOscuro ? '#1c1c1e' : '#f8f9fa',
-    inputBg: esOscuro ? '#2c2c2e' : '#f9f9f9',
     btnCancelBg: esOscuro ? '#2c2c2e' : '#eee'
   };
 
@@ -189,7 +173,7 @@ export default function ProgresoScreen() {
   );
 }
 
-const getStyles = (colores: Colores) => StyleSheet.create({
+const getStyles = (colores: ColoresExtendidos) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colores.fondo },
   header: { padding: 20, backgroundColor: colores.tarjeta, borderBottomWidth: 1, borderColor: colores.borde, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   titulo: { fontSize: 24, fontWeight: 'bold', color: colores.texto },

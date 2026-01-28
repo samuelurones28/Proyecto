@@ -1,11 +1,11 @@
 import { useState, useCallback, useRef } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Modal, useColorScheme } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Modal } from 'react-native';
 import { Calendar, LocaleConfig } from 'react-native-calendars';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { supabase } from '../../supabase';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '../../components/ThemeContext';
 import { useAuth } from '../../components/AuthContext';
+import { useAppColors } from '../../hooks/useAppColors';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { GROQ_API_KEY, GROQ_MODEL } from '../../config';
 
@@ -19,19 +19,12 @@ LocaleConfig.locales['es'] = {
 LocaleConfig.defaultLocale = 'es';
 
 export default function CalendarioScreen() {
-  const { theme } = useTheme();
   const { user } = useAuth();
-  const systemScheme = useColorScheme();
-  const esOscuro = theme === 'dark' ? true : theme === 'light' ? false : systemScheme === 'dark';
+  const { esOscuro, colores: baseColores } = useAppColors();
+
+  // Extender colores base con colores específicos de esta pantalla
   const colores = {
-    fondo: esOscuro ? '#000000' : '#f8f9fa',
-    tarjeta: esOscuro ? '#1c1c1e' : '#ffffff',
-    texto: esOscuro ? '#ffffff' : '#333333',
-    subtexto: esOscuro ? '#8e8e93' : '#666666',
-    borde: esOscuro ? '#2c2c2e' : '#eee',
-    primario: '#007AFF',
-    danger: '#FF3B30',
-    descansoBg: esOscuro ? '#2c2c2e' : '#f1f1f1',
+    ...baseColores,
     eliminarBg: esOscuro ? '#2c2c2e' : '#fff5f5',
     eliminarBorder: esOscuro ? '#2c2c2e' : '#ffebee',
     infoBg: esOscuro ? '#1c1c1e' : '#f0f9eb'

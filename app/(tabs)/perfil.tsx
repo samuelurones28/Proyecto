@@ -1,16 +1,17 @@
 import { useState, useCallback } from 'react';
-import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, Modal, Appearance, useColorScheme } from 'react-native';
+import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, Modal } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../components/ThemeContext';
 import { useAuth } from '../../components/AuthContext';
+import { useAppColors } from '../../hooks/useAppColors';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function PerfilScreen() {
-  const { theme, changeTheme } = useTheme();
+  const { changeTheme } = useTheme();
   const { user, signOut } = useAuth();
-  const systemScheme = useColorScheme();
+  const { esOscuro, colores } = useAppColors();
   const [cargando, setCargando] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [modalInfoVisible, setModalInfoVisible] = useState(false);
@@ -32,18 +33,6 @@ export default function PerfilScreen() {
     meta_grasas: '',
     tema: 'system'
   });
-
-  const esOscuro = theme === 'dark' ? true : theme === 'light' ? false : systemScheme === 'dark';
-  const colores = {
-    fondo: esOscuro ? '#000000' : '#f2f2f7',
-    tarjeta: esOscuro ? '#1c1c1e' : '#ffffff',
-    texto: esOscuro ? '#ffffff' : '#1c1c1e',
-    subtexto: esOscuro ? '#8e8e93' : '#8e8e93',
-    borde: esOscuro ? '#2c2c2e' : '#e5e5ea',
-    inputBg: esOscuro ? '#2c2c2e' : '#f2f2f7',
-    primario: '#007AFF',
-    danger: '#FF3B30'
-  };
 
   const styles = getStyles(colores);
 

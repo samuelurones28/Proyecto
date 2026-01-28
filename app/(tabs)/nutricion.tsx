@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, FlatList, ActivityIndicator, Modal, TextInput, Alert, KeyboardAvoidingView, Platform, useColorScheme } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, FlatList, ActivityIndicator, Modal, TextInput, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useFocusEffect } from '@react-navigation/native';
@@ -8,24 +8,14 @@ import { supabase } from '../../supabase';
 import BarcodeScanner from '../../components/BarcodeScanner';
 import { useWorkout } from '../../components/WorkoutContext';
 import { useAuth } from '../../components/AuthContext';
+import { useAppColors } from '../../hooks/useAppColors';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { GROQ_API_KEY, GROQ_MODEL, GROQ_VISION_MODEL } from '../../config';
 import { sanitizeFullTextSearch, sanitizeILike } from '../../utils/sanitize'; 
 
 export default function NutricionScreen() {
   const { user } = useAuth();
-  const systemScheme = useColorScheme();
-  const esOscuro = systemScheme === 'dark';
-  
-  const colores = {
-    fondo: esOscuro ? '#000000' : '#f2f2f7',
-    tarjeta: esOscuro ? '#1c1c1e' : '#ffffff',
-    texto: esOscuro ? '#ffffff' : '#1c1c1e',
-    subtexto: esOscuro ? '#8e8e93' : '#666',
-    borde: esOscuro ? '#2c2c2e' : '#eee',
-    inputBg: esOscuro ? '#2c2c2e' : '#f9f9f9',
-    primario: '#007AFF'
-  };
+  const { esOscuro, colores } = useAppColors();
 
   const { rutinaActiva } = useWorkout();
   const [cargando, setCargando] = useState(false);

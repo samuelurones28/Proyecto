@@ -1,20 +1,19 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform, Alert, Modal, useColorScheme } from 'react-native';
+import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform, Alert, Modal } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../supabase';
 import ReactMarkdown from 'react-native-markdown-display';
-import { useTheme } from '../../components/ThemeContext';
 import { useAuth } from '../../components/AuthContext';
 import { useWorkout } from '../../components/WorkoutContext';
+import { useAppColors } from '../../hooks/useAppColors';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { GROQ_API_KEY, GROQ_MODEL } from '../../config';
 
 export default function ChatScreen() {
-  const { theme } = useTheme();
   const { user } = useAuth();
   const { rutinaActiva } = useWorkout();
-  const systemScheme = useColorScheme();
+  const { esOscuro, colores } = useAppColors();
   const [mensajes, setMensajes] = useState([
     { id: 1, texto: "⚡ Hola. Soy tu Arquitecto Fitness. ¿Creamos una rutina nueva o ajustamos la actual?", esUsuario: false }
   ]);
@@ -27,33 +26,22 @@ export default function ChatScreen() {
   const [perfil, setPerfil] = useState(null);
   const [plan, setPlan] = useState(null);
 
-  // --- TEMA ---
-  const esOscuro = theme === 'dark' ? true : theme === 'light' ? false : systemScheme === 'dark';
-  const colores = {
-    bg: esOscuro ? '#000000' : '#f2f2f7',
-    card: esOscuro ? '#1c1c1e' : 'white',
-    text: esOscuro ? '#ffffff' : '#333333',
-    border: esOscuro ? '#333333' : '#ddd',
-    input: esOscuro ? '#2c2c2e' : '#f2f2f7',
-    placeholder: esOscuro ? '#888888' : '#666666'
-  };
-
   const getStyles = (colores) => StyleSheet.create({
-    container: { flex: 1, backgroundColor: colores.bg },
-    header: { padding: 15, backgroundColor: colores.card, borderBottomWidth: 1, borderColor: colores.border, flexDirection:'row', justifyContent:'space-between', alignItems: 'center' },
-    titulo: { fontSize: 18, fontWeight: 'bold', color: colores.text },
+    container: { flex: 1, backgroundColor: colores.fondo },
+    header: { padding: 15, backgroundColor: colores.tarjeta, borderBottomWidth: 1, borderColor: colores.borde, flexDirection:'row', justifyContent:'space-between', alignItems: 'center' },
+    titulo: { fontSize: 18, fontWeight: 'bold', color: colores.texto },
     chatArea: { flex: 1, padding: 15 },
     burbuja: { maxWidth: '85%', padding: 12, borderRadius: 18, marginBottom: 10 },
     burbujaUsuario: { backgroundColor: '#007AFF', alignSelf: 'flex-end', borderBottomRightRadius: 2 },
-    burbujaIA: { backgroundColor: colores.card, alignSelf: 'flex-start', borderBottomLeftRadius: 2, borderWidth: 1, borderColor: colores.border },
+    burbujaIA: { backgroundColor: colores.tarjeta, alignSelf: 'flex-start', borderBottomLeftRadius: 2, borderWidth: 1, borderColor: colores.borde },
     textoUsuario: { color: 'white', fontSize: 16 },
-    inputArea: { flexDirection: 'row', padding: 10, backgroundColor: colores.card, alignItems: 'center', gap: 10, borderTopWidth:1, borderColor: colores.border },
-    input: { flex: 1, backgroundColor: colores.input, padding: 10, borderRadius: 20, fontSize: 16, maxHeight: 100, color: colores.text },
+    inputArea: { flexDirection: 'row', padding: 10, backgroundColor: colores.tarjeta, alignItems: 'center', gap: 10, borderTopWidth:1, borderColor: colores.borde },
+    input: { flex: 1, backgroundColor: colores.inputBg, padding: 10, borderRadius: 20, fontSize: 16, maxHeight: 100, color: colores.texto },
     btnEnviar: { backgroundColor: '#007AFF', width: 45, height: 45, borderRadius: 25, justifyContent: 'center', alignItems: 'center' },
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
-    modalContent: { backgroundColor: colores.card, width: '80%', padding: 20, borderRadius: 15, alignItems:'center' },
-    modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 10, color: colores.text },
-    modalText: { fontSize: 14, color: colores.placeholder, lineHeight: 22, textAlign: 'left', marginBottom: 20 },
+    modalContent: { backgroundColor: colores.tarjeta, width: '80%', padding: 20, borderRadius: 15, alignItems:'center' },
+    modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 10, color: colores.texto },
+    modalText: { fontSize: 14, color: colores.subtexto, lineHeight: 22, textAlign: 'left', marginBottom: 20 },
     btnCerrar: { backgroundColor: '#007AFF', padding: 10, borderRadius: 8, width: '100%', alignItems: 'center' }
   });
 
@@ -236,10 +224,10 @@ export default function ChatScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colores.bg }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colores.fondo }]}>
       {/* HEADER CON BOTÓN INFO */}
-      <View style={[styles.header, { backgroundColor: colores.card, borderColor: colores.border }]}>
-        <Text style={[styles.titulo, { color: colores.text }]}>Groq Coach 🧠</Text>
+      <View style={[styles.header, { backgroundColor: colores.tarjeta, borderColor: colores.borde }]}>
+        <Text style={[styles.titulo, { color: colores.texto }]}>Groq Coach 🧠</Text>
         <TouchableOpacity onPress={() => setModalInfoVisible(true)}>
           <Ionicons name="information-circle-outline" size={28} color="#007AFF" />
         </TouchableOpacity>
@@ -252,13 +240,13 @@ export default function ChatScreen() {
         onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
       >
         {mensajes.map((msg) => (
-          <View key={msg.id} style={[styles.burbuja, msg.esUsuario ? styles.burbujaUsuario : [styles.burbujaIA, { backgroundColor: colores.card, borderColor: colores.border }]]}>
+          <View key={msg.id} style={[styles.burbuja, msg.esUsuario ? styles.burbujaUsuario : [styles.burbujaIA, { backgroundColor: colores.tarjeta, borderColor: colores.borde }]]}>
             {msg.esUsuario ? (
               <Text style={styles.textoUsuario}>{msg.texto}</Text>
             ) : (
               <ReactMarkdown style={{
-                body: { fontSize: 16, color: colores.text },
-                strong: { fontWeight: 'bold', color: colores.text }
+                body: { fontSize: 16, color: colores.texto },
+                strong: { fontWeight: 'bold', color: colores.texto }
               }}>{msg.texto}</ReactMarkdown>
             )}
           </View>
@@ -269,14 +257,14 @@ export default function ChatScreen() {
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}>
         {/* INPUT AREA ELEVADA SI HAY RUTINA ACTIVA */}
         <View style={[
-            styles.inputArea, 
-            { backgroundColor: colores.card, borderColor: colores.border },
+            styles.inputArea,
+            { backgroundColor: colores.tarjeta, borderColor: colores.borde },
             rutinaActiva && { marginBottom: 65 } // <--- MARGEN DINÁMICO
         ]}>
-          <TextInput 
-            style={[styles.input, { backgroundColor: colores.input, color: colores.text }]} 
-            placeholder="Escribe aquí..." 
-            placeholderTextColor={colores.placeholder}
+          <TextInput
+            style={[styles.input, { backgroundColor: colores.inputBg, color: colores.texto }]}
+            placeholder="Escribe aquí..."
+            placeholderTextColor={colores.subtexto}
             value={input}
             onChangeText={setInput}
             multiline
@@ -290,9 +278,9 @@ export default function ChatScreen() {
       {/* MODAL DE INFORMACIÓN */}
       <Modal visible={modalInfoVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colores.card }]}>
-            <Text style={[styles.modalTitle, { color: colores.text }]}>Sobre tu Coach IA</Text>
-            <Text style={[styles.modalText, { color: colores.text }]}>
+          <View style={[styles.modalContent, { backgroundColor: colores.tarjeta }]}>
+            <Text style={[styles.modalTitle, { color: colores.texto }]}>Sobre tu Coach IA</Text>
+            <Text style={[styles.modalText, { color: colores.texto }]}>
               Aquí puedes hablar con tu entrenador inteligente para:
               {"\n"}- Crear una rutina desde cero (Entrevista).
               {"\n"}- Modificar tu plan actual (Cambios permanentes).
