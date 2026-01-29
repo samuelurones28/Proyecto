@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, memo, useCallback, useMemo } from 'react';
 import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, Dimensions, Alert, ActivityIndicator, useColorScheme } from 'react-native';
 import { router } from 'expo-router';
 import { supabase } from '../supabase';
@@ -10,6 +10,23 @@ const DIAS = [{ id: 'lunes', label: 'LU' }, { id: 'martes', label: 'MA' }, { id:
 const OBJETIVOS = [{ id: 'definicion', label: 'Definicion', icono: '🔥', desc: 'Perder grasa y marcar musculo' }, { id: 'recomposicion', label: 'Recomposicion', icono: '⚖️', desc: 'Ganar musculo y perder grasa' }, { id: 'volumen', label: 'Volumen', icono: '🦍', desc: 'Ganar masa muscular' }];
 const NIVELES = [{ id: 'moderado', label: 'Moderado', icono: '🏃', desc: 'Entreno 3-5 dias por semana' }, { id: 'activo', label: 'Activo', icono: '🏋️', desc: 'Entreno 6-7 dias por semana' }, { id: 'muy_activo', label: 'Muy Activo', icono: '🚀', desc: 'Atleta o profesional del fitness' }];
 
+// Componente InputField movido fuera para evitar recreación en cada render
+const InputField = memo(({ label, value, placeholder, numeric, colores, onChangeText }: {
+  label: string; value: string; placeholder: string; numeric?: boolean; colores: any; onChangeText: (t: string) => void
+}) => (
+  <>
+    <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 10, color: colores.texto }}>{label}</Text>
+    <TextInput
+      style={{ borderRadius: 12, padding: 16, fontSize: 18, borderWidth: 1, backgroundColor: colores.inputBg, color: colores.texto, borderColor: colores.borde }}
+      placeholder={placeholder}
+      placeholderTextColor={colores.subtexto}
+      value={value}
+      onChangeText={onChangeText}
+      keyboardType={numeric ? 'numeric' : 'default'}
+    />
+  </>
+));
+
 export default function OnboardingScreen() {
   const systemScheme = useColorScheme();
   const esOscuro = systemScheme === 'dark';
@@ -18,18 +35,24 @@ export default function OnboardingScreen() {
   const [guardando, setGuardando] = useState(false);
   const [datos, setDatos] = useState({ nombre: '', edad: '', altura: '', peso: '', objetivo: '', nivel_actividad: '', dias_no_disponibles: '' });
 
-  const colores = {
+  const colores = useMemo(() => ({
     fondo: esOscuro ? '#000000' : '#f2f2f7', tarjeta: esOscuro ? '#1c1c1e' : '#ffffff',
     texto: esOscuro ? '#ffffff' : '#1c1c1e', subtexto: '#8e8e93',
     borde: esOscuro ? '#2c2c2e' : '#e5e5ea', inputBg: esOscuro ? '#2c2c2e' : '#f2f2f7',
     primario: '#007AFF', danger: '#FF3B30'
-  };
+  }), [esOscuro]);
 
   const TOTAL_PASOS = 6;
   const scrollToPaso = (i: number) => { scrollRef.current?.scrollTo({ x: i * width, animated: true }); setPasoActual(i); };
   const siguiente = () => pasoActual < TOTAL_PASOS - 1 ? scrollToPaso(pasoActual + 1) : guardarPerfil();
   const anterior = () => pasoActual > 0 && scrollToPaso(pasoActual - 1);
-  const setField = (field: string, val: string) => setDatos({ ...datos, [field]: val });
+  const setField = useCallback((field: string, val: string) => setDatos(prev => ({ ...prev, [field]: val })), []);
+
+  // Callbacks memorizados para cada campo de texto
+  const setNombre = useCallback((t: string) => setField('nombre', t), [setField]);
+  const setEdad = useCallback((t: string) => setField('edad', t), [setField]);
+  const setAltura = useCallback((t: string) => setField('altura', t), [setField]);
+  const setPeso = useCallback((t: string) => setField('peso', t), [setField]);
 
   const validarPaso = (): boolean => {
     if (pasoActual === 1) return datos.nombre.trim().length > 0 && datos.edad.trim().length > 0;
@@ -77,12 +100,6 @@ export default function OnboardingScreen() {
     </TouchableOpacity>
   );
 
-  const InputField = ({ label, field, placeholder, numeric }: { label: string; field: string; placeholder: string; numeric?: boolean }) => (
-    <>
-      <Text style={[styles.inputLabel, { color: colores.texto }]}>{label}</Text>
-      <TextInput style={[styles.input, { backgroundColor: colores.inputBg, color: colores.texto, borderColor: colores.borde }]} placeholder={placeholder} placeholderTextColor={colores.subtexto} value={(datos as any)[field]} onChangeText={(t) => setField(field, t)} keyboardType={numeric ? 'numeric' : 'default'} />
-    </>
-  );
 
   const renderPaso = (i: number) => {
     if (i === 0) return (
@@ -95,15 +112,19 @@ export default function OnboardingScreen() {
     if (i === 1) return (
       <View style={styles.pasoContent}>
         <Text style={{ fontSize: 60, textAlign: 'center', marginBottom: 20 }}>👋</Text>
-        <InputField label="Como te llamas?" field="nombre" placeholder="Tu nombre" />
-        <View style={{ marginTop: 20 }}><InputField label="Cuantos años tienes?" field="edad" placeholder="Tu edad" numeric /></View>
+        <InputField label="Como te llamas?" value={datos.nombre} placeholder="Tu nombre" colores={colores} onChangeText={setNombre} />
+        <View style={{ marginTop: 20 }}>
+          <InputField label="Cuantos años tienes?" value={datos.edad} placeholder="Tu edad" numeric colores={colores} onChangeText={setEdad} />
+        </View>
       </View>
     );
     if (i === 2) return (
       <View style={styles.pasoContent}>
         <Text style={{ fontSize: 60, textAlign: 'center', marginBottom: 20 }}>📏</Text>
-        <InputField label="Cual es tu altura? (cm)" field="altura" placeholder="Ej: 175" numeric />
-        <View style={{ marginTop: 20 }}><InputField label="Cual es tu peso actual? (kg)" field="peso" placeholder="Ej: 70" numeric /></View>
+        <InputField label="Cual es tu altura? (cm)" value={datos.altura} placeholder="Ej: 175" numeric colores={colores} onChangeText={setAltura} />
+        <View style={{ marginTop: 20 }}>
+          <InputField label="Cual es tu peso actual? (kg)" value={datos.peso} placeholder="Ej: 70" numeric colores={colores} onChangeText={setPeso} />
+        </View>
       </View>
     );
     if (i === 3) return (
