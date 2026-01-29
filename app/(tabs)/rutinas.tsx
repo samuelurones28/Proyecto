@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { StyleSheet, Text, View, ScrollView, ActivityIndicator, TouchableOpacity, Alert, TextInput, KeyboardAvoidingView, Platform, Modal, SectionList, FlatList, Image, useColorScheme, Vibration, Dimensions, AppState } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, ActivityIndicator, TouchableOpacity, Alert, TextInput, KeyboardAvoidingView, Platform, Modal, SectionList, useColorScheme, Vibration, Dimensions, AppState } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter, useLocalSearchParams } from 'expo-router'; 
 import { supabase } from '../../supabase';
@@ -17,8 +17,6 @@ Notifications.setNotificationHandler({
     shouldSetBadge: false,
   }),
 });
-
-const RAPID_API_KEY = process.env.EXPO_PUBLIC_RAPIDAPI_KEY; 
 
 export default function RutinasScreen() {
   const router = useRouter();
@@ -58,8 +56,6 @@ export default function RutinasScreen() {
   };
 
   const [cargando, setCargando] = useState(true);
-  const [buscandoAPI, setBuscandoAPI] = useState(false);
-  
   const [rutinaHoy, setRutinaHoy] = useState(null); 
   const [diaHoyNombre, setDiaHoyNombre] = useState("");
   const [planSemanal, setPlanSemanal] = useState({}); 
@@ -68,13 +64,9 @@ export default function RutinasScreen() {
   const [modalInfoVisible, setModalInfoVisible] = useState(false);
 
   const [modalBibliotecaVisible, setModalBibliotecaVisible] = useState(false);
-  const [catalogoLocal, setCatalogoLocal] = useState([]); 
-  const [resultadosAPI, setResultadosAPI] = useState([]); 
-  const [filtroTexto, setFiltroTexto] = useState(''); 
-  const [filtroMusculo, setFiltroMusculo] = useState('Todos');
-  
-  const [nuevoEjercicioManual, setNuevoEjercicioManual] = useState(''); 
-  const [mostrandoInputManual, setMostrandoInputManual] = useState(false); 
+  const [catalogoLocal, setCatalogoLocal] = useState([]);
+  const [filtroTexto, setFiltroTexto] = useState('');
+  const [filtroMusculo, setFiltroMusculo] = useState('Todos'); 
 
   const [modalNombreRutinaVisible, setModalNombreRutinaVisible] = useState(false);
   const [nombreNuevaRutina, setNombreNuevaRutina] = useState('');
@@ -287,26 +279,6 @@ export default function RutinasScreen() {
     if (data) setCatalogoLocal(data);
   };
 
-  const buscarEnExerciseDB = async (texto) => {
-    setFiltroTexto(texto);
-    if (texto.length < 3) {
-        setResultadosAPI([]); 
-        return;
-    }
-    setBuscandoAPI(true);
-    try {
-        const response = await fetch(`https://exercisedb.p.rapidapi.com/exercises/name/${texto.toLowerCase()}?limit=15`, {
-            method: 'GET',
-            headers: {
-                'X-RapidAPI-Key': RAPID_API_KEY,
-                'X-RapidAPI-Host': 'exercisedb.p.rapidapi.com'
-            }
-        });
-        const data = await response.json();
-        if (Array.isArray(data)) setResultadosAPI(data); else setResultadosAPI([]);
-    } catch (error) { console.error("Error API:", error); } finally { setBuscandoAPI(false); }
-  };
-
   const seccionesCatalogoLocal = useMemo(() => {
     if (!catalogoLocal.length) return [];
     const filtrados = catalogoLocal.filter(e => {
@@ -325,24 +297,17 @@ export default function RutinasScreen() {
 
   const normalizarRutina = (rutinaRaw, tituloDefecto) => {
     if (!rutinaRaw) return { titulo: tituloDefecto, ejercicios: [] };
-    const tituloReal = rutinaRaw.titulo || rutinaRaw.nombre || tituloDefecto;
     const ejerciciosLimpios = rutinaRaw.ejercicios?.map(ej => {
-        let nombreEj = "Ejercicio"; let seriesObj = 3; let repsObj = "8-12"; let tipObj = ""; let gifUrlObj = null;
-        if (typeof ej === 'string') { nombreEj = ej; } 
-        else if (typeof ej === 'object') {
-            nombreEj = ej.nombre || ej.name || ej.titulo || "Ejercicio";
-            seriesObj = parseInt(ej.series) || 3;
-            repsObj = ej.reps || "8-12";
-            tipObj = ej.tip || "";
-            gifUrlObj = ej.gifUrl || null; 
-        }
-        return {
-            nombre: nombreEj, tip: tipObj, gifUrl: gifUrlObj,
-            metaInfo: { series: seriesObj.toString(), reps: repsObj.toString() }, 
-            seriesDetalladas: ej.seriesDetalladas || Array.from({ length: seriesObj }, () => ({ kg: '', reps: '', completado: false }))
-        };
+      const esString = typeof ej === 'string';
+      const nombreEj = esString ? ej : (ej.nombre || ej.name || ej.titulo || "Ejercicio");
+      const seriesObj = esString ? 3 : (parseInt(ej.series) || 3);
+      return {
+        nombre: nombreEj, tip: esString ? "" : (ej.tip || ""),
+        metaInfo: { series: seriesObj.toString(), reps: esString ? "8-12" : (ej.reps || "8-12") },
+        seriesDetalladas: ej.seriesDetalladas || Array(seriesObj).fill(null).map(() => ({ kg: '', reps: '', completado: false }))
+      };
     }) || [];
-    return { id: rutinaRaw.id || null, titulo: tituloReal, ejercicios: ejerciciosLimpios };
+    return { id: rutinaRaw.id || null, titulo: rutinaRaw.titulo || rutinaRaw.nombre || tituloDefecto, ejercicios: ejerciciosLimpios };
   };
 
   const cargarHistorialPrevio = async (ejercicios) => {
@@ -408,7 +373,7 @@ export default function RutinasScreen() {
   const guardarCambiosRutinaActiva = async () => {
       if (!rutinaActiva) return;
       if (rutinaActiva.esPersonalizada && rutinaActiva.id) {
-          const ejerciciosParaGuardar = rutinaActiva.ejercicios.map(e => ({ nombre: e.nombre, series: e.metaInfo?.series, reps: e.metaInfo?.reps, tip: e.tip, gifUrl: e.gifUrl }));
+          const ejerciciosParaGuardar = rutinaActiva.ejercicios.map(e => ({ nombre: e.nombre, series: e.metaInfo?.series, reps: e.metaInfo?.reps, tip: e.tip }));
           await supabase.from('rutinas_personalizadas').update({ ejercicios: ejerciciosParaGuardar }).eq('id', rutinaActiva.id);
           Alert.alert("Guardado", "Rutina actualizada."); cargarMisRutinas();
       } else { Alert.alert("Info", "Cambios temporales guardados en sesión."); }
@@ -442,75 +407,36 @@ export default function RutinasScreen() {
     ]);
   };
 
-  const seleccionarDeBiblioteca = (ejercicio, esDeAPI = false) => {
-    setModalBibliotecaVisible(false); setFiltroTexto(''); setMostrandoInputManual(false); setNuevoEjercicioManual(''); setFiltroMusculo('Todos'); setResultadosAPI([]);
-    const nombre = esDeAPI ? ejercicio.name.charAt(0).toUpperCase() + ejercicio.name.slice(1) : ejercicio.nombre;
-    const musculo = esDeAPI ? ejercicio.bodyPart : ejercicio.musculo;
-    const gif = esDeAPI ? ejercicio.gifUrl : null;
-    const nuevo = { nombre, tip: musculo ? `Músculo: ${musculo}` : "", gifUrl: gif, metaInfo: { series: "3", reps: "10-12" }, seriesDetalladas: [{ kg: '', reps: '', completado: false }, { kg: '', reps: '', completado: false }, { kg: '', reps: '', completado: false }] };
-    
-    const copia = { ...rutinaActiva }; 
-    copia.ejercicios.push(nuevo); 
-    setRutinaActiva(copia);
-
+  const seleccionarDeBiblioteca = (ejercicio) => {
+    setModalBibliotecaVisible(false); setFiltroTexto(''); setFiltroMusculo('Todos');
+    const nuevo = {
+      nombre: ejercicio.nombre, tip: ejercicio.musculo ? `Músculo: ${ejercicio.musculo}` : "",
+      metaInfo: { series: "3", reps: "10-12" },
+      seriesDetalladas: Array(3).fill(null).map(() => ({ kg: '', reps: '', completado: false }))
+    };
+    setRutinaActiva({ ...rutinaActiva, ejercicios: [...rutinaActiva.ejercicios, nuevo] });
     if (rutinaActiva.esPersonalizada) guardarCambiosRutinaActiva();
   };
 
-  const agregarEjercicioManual = () => {
-      if (!nuevoEjercicioManual.trim()) return;
-      seleccionarDeBiblioteca({ nombre: nuevoEjercicioManual, musculo: "Personalizado" }, false);
+  // Helper para clonar y modificar ejercicios de forma inmutable
+  const modificarEjercicio = (eIdx, modificador) => {
+    const ejercicios = rutinaActiva.ejercicios.map((ej, i) => i === eIdx ? { ...ej, seriesDetalladas: modificador([...ej.seriesDetalladas]) } : ej);
+    setRutinaActiva({ ...rutinaActiva, ejercicios });
   };
 
-  const actualizarSerie = (eIdx, sIdx, campo, val) => { 
-      const c = { ...rutinaActiva }; 
-      c.ejercicios = [...rutinaActiva.ejercicios];
-      c.ejercicios[eIdx] = { ...c.ejercicios[eIdx] };
-      c.ejercicios[eIdx].seriesDetalladas = [...c.ejercicios[eIdx].seriesDetalladas];
-      c.ejercicios[eIdx].seriesDetalladas[sIdx] = { ...c.ejercicios[eIdx].seriesDetalladas[sIdx] };
-      
-      c.ejercicios[eIdx].seriesDetalladas[sIdx][campo] = val; 
-      setRutinaActiva(c); 
+  const actualizarSerie = (eIdx, sIdx, campo, val) => {
+    modificarEjercicio(eIdx, series => { series[sIdx] = { ...series[sIdx], [campo]: val }; return series; });
   };
 
-  const toggleCheck = (eIdx, sIdx) => { 
-      const c = { ...rutinaActiva }; 
-      c.ejercicios = [...rutinaActiva.ejercicios];
-      c.ejercicios[eIdx] = { ...c.ejercicios[eIdx] };
-      c.ejercicios[eIdx].seriesDetalladas = [...c.ejercicios[eIdx].seriesDetalladas];
-      c.ejercicios[eIdx].seriesDetalladas[sIdx] = { ...c.ejercicios[eIdx].seriesDetalladas[sIdx] };
-
-      c.ejercicios[eIdx].seriesDetalladas[sIdx].completado = !c.ejercicios[eIdx].seriesDetalladas[sIdx].completado; 
-      setRutinaActiva(c); 
-      
-      if (c.ejercicios[eIdx].seriesDetalladas[sIdx].completado) {
-          iniciarDescanso();
-      }
+  const toggleCheck = (eIdx, sIdx) => {
+    const nuevoEstado = !rutinaActiva.ejercicios[eIdx].seriesDetalladas[sIdx].completado;
+    modificarEjercicio(eIdx, series => { series[sIdx] = { ...series[sIdx], completado: nuevoEstado }; return series; });
+    if (nuevoEstado) iniciarDescanso();
   };
 
-  const eliminarEjercicio = (idx) => { 
-      const c = { ...rutinaActiva }; 
-      c.ejercicios = [...c.ejercicios];
-      c.ejercicios.splice(idx, 1); 
-      setRutinaActiva(c); 
-  };
-  
-  const agregarSerie = (idx) => { 
-      const c = { ...rutinaActiva }; 
-      c.ejercicios = [...c.ejercicios];
-      c.ejercicios[idx] = { ...c.ejercicios[idx] };
-      c.ejercicios[idx].seriesDetalladas = [...c.ejercicios[idx].seriesDetalladas];
-      c.ejercicios[idx].seriesDetalladas.push({kg:'',reps:'',completado:false}); 
-      setRutinaActiva(c); 
-  };
-  
-  const quitarSerie = (idx) => { 
-      const c = { ...rutinaActiva }; 
-      c.ejercicios = [...c.ejercicios];
-      c.ejercicios[idx] = { ...c.ejercicios[idx] };
-      c.ejercicios[idx].seriesDetalladas = [...c.ejercicios[idx].seriesDetalladas];
-      c.ejercicios[idx].seriesDetalladas.pop(); 
-      setRutinaActiva(c); 
-  };
+  const eliminarEjercicio = (idx) => setRutinaActiva({ ...rutinaActiva, ejercicios: rutinaActiva.ejercicios.filter((_, i) => i !== idx) });
+  const agregarSerie = (idx) => modificarEjercicio(idx, series => [...series, { kg: '', reps: '', completado: false }]);
+  const quitarSerie = (idx) => modificarEjercicio(idx, series => series.slice(0, -1));
 
   if (!rutinaActiva || !vistaEntrenoExpandida) {
     return (
@@ -605,13 +531,10 @@ export default function RutinasScreen() {
             {rutinaActiva.ejercicios.map((ej, i) => (
                 <View key={i} style={[styles.cardEjercicio, {backgroundColor: colores.tarjeta}]}>
                       <View style={{flexDirection:'row', justifyContent:'space-between', marginBottom:8}}>
-                        <View style={{flex:1, flexDirection:'row', alignItems:'center'}}>
-                            {ej.gifUrl && <Image source={{uri: ej.gifUrl}} style={{width: 40, height: 40, borderRadius: 8, marginRight: 10, backgroundColor: '#eee'}} />}
-                            <TouchableOpacity onPress={() => abrirEstadisticas(ej.nombre)} style={{flexDirection:'row', alignItems:'center', flex:1}}>
-                                <Text style={[styles.nombreEjercicio, {flex:1}]}>{ej.nombre}</Text>
-                                <Ionicons name="stats-chart" size={18} color={colores.primario} style={{marginLeft:8}} />
-                            </TouchableOpacity>
-                        </View>
+                        <TouchableOpacity onPress={() => abrirEstadisticas(ej.nombre)} style={{flexDirection:'row', alignItems:'center', flex:1}}>
+                            <Text style={[styles.nombreEjercicio, {flex:1}]}>{ej.nombre}</Text>
+                            <Ionicons name="stats-chart" size={18} color={colores.primario} style={{marginLeft:8}} />
+                        </TouchableOpacity>
                         <TouchableOpacity onPress={()=>eliminarEjercicio(i)}><Ionicons name="close" size={22} color={colores.subtexto}/></TouchableOpacity>
                       </View>
                       
@@ -722,73 +645,34 @@ export default function RutinasScreen() {
 
                 <View style={[styles.searchBar, {backgroundColor: colores.tarjeta}]}>
                     <Ionicons name="search" color={colores.subtexto}/>
-                    <TextInput 
-                        style={{flex:1, color: colores.texto, marginLeft: 5}} 
-                        placeholder="Buscar ejercicio..." 
-                        placeholderTextColor={colores.subtexto} 
-                        value={filtroTexto} 
-                        onChangeText={buscarEnExerciseDB} 
-                    />
-                    {buscandoAPI && <ActivityIndicator size="small" color={colores.primario}/>}
+                    <TextInput style={{flex:1, color: colores.texto, marginLeft: 5}} placeholder="Buscar ejercicio..." placeholderTextColor={colores.subtexto} value={filtroTexto} onChangeText={setFiltroTexto} />
                 </View>
 
-                {!mostrandoInputManual && filtroTexto.length > 0 && resultadosAPI.length === 0 && (
-                    <TouchableOpacity style={{flexDirection:'row', alignItems:'center', justifyContent:'center', padding:15, marginBottom:5, backgroundColor: colores.tarjeta, marginHorizontal:15, borderRadius:8}} onPress={agregarEjercicioManual}>
+                {filtroTexto.length > 0 && seccionesCatalogoLocal.length === 0 && (
+                    <TouchableOpacity style={{flexDirection:'row', alignItems:'center', justifyContent:'center', padding:15, marginBottom:5, backgroundColor: colores.tarjeta, marginHorizontal:15, borderRadius:8}} onPress={() => seleccionarDeBiblioteca({ nombre: filtroTexto, musculo: "Personalizado" })}>
                         <Ionicons name="add-circle-outline" size={24} color={colores.primario} style={{marginRight:5}}/>
-                        <Text style={{color: colores.primario, fontWeight:'bold', fontSize: 16}}>➕ Añadir "{filtroTexto}" como nuevo</Text>
+                        <Text style={{color: colores.primario, fontWeight:'bold'}}>Añadir "{filtroTexto}" como nuevo</Text>
                     </TouchableOpacity>
                 )}
 
-                {mostrandoInputManual && (
-                    <View style={{marginHorizontal:15, marginBottom:15, padding:15, backgroundColor: colores.tarjeta, borderRadius:10}}>
-                        <Text style={{color: colores.texto, fontWeight:'bold', marginBottom:10}}>Nombre del nuevo ejercicio:</Text>
-                        <TextInput style={[styles.inputSerie, {height:40, textAlign:'left', paddingLeft:10, backgroundColor: colores.inputBg, color: colores.texto, borderColor: colores.borde, borderWidth:1}]} placeholder="Ej: Remo Pendlay" placeholderTextColor={colores.subtexto} value={nuevoEjercicioManual} onChangeText={setNuevoEjercicioManual} autoFocus/>
-                        <View style={{flexDirection:'row', marginTop:10, gap:10}}>
-                            <TouchableOpacity style={[styles.btnCancel, {flex:1}]} onPress={() => setMostrandoInputManual(false)}><Text style={{color:'#666'}}>Cancelar</Text></TouchableOpacity>
-                            <TouchableOpacity style={[styles.btnSave, {flex:1}]} onPress={agregarEjercicioManual}><Text style={{color:'white'}}>Añadir</Text></TouchableOpacity>
+                <SectionList
+                    sections={seccionesCatalogoLocal}
+                    keyExtractor={(item) => item.id.toString()}
+                    initialNumToRender={15} maxToRenderPerBatch={10} windowSize={5} removeClippedSubviews
+                    contentContainerStyle={{paddingBottom: 50}}
+                    renderItem={({item}) => (
+                        <TouchableOpacity style={[styles.itemCatalogo, {backgroundColor: colores.tarjeta}]} onPress={()=>seleccionarDeBiblioteca(item)}>
+                            <Text style={{fontWeight:'bold', color: colores.texto}}>{item.nombre}</Text>
+                            <Ionicons name="add-circle" size={24} color={colores.primario}/>
+                        </TouchableOpacity>
+                    )}
+                    renderSectionHeader={({section: {title}}) => (
+                        <View style={{backgroundColor: colores.seccionHeader, padding: 8, paddingLeft: 15}}>
+                            <Text style={{fontWeight: 'bold', color: colores.texto, textTransform:'uppercase', fontSize: 12}}>{title}</Text>
                         </View>
-                    </View>
-                )}
-
-                {resultadosAPI.length > 0 ? (
-                    <FlatList
-                        data={resultadosAPI}
-                        keyExtractor={(item) => item.id}
-                        initialNumToRender={10} maxToRenderPerBatch={10} windowSize={5} removeClippedSubviews={true}
-                        contentContainerStyle={{paddingBottom: 50}}
-                        renderItem={({item}) => (
-                            <TouchableOpacity style={[styles.itemCatalogo, {backgroundColor: colores.tarjeta}]} onPress={()=>seleccionarDeBiblioteca(item, true)}>
-                                <View style={{flexDirection:'row', alignItems:'center', flex:1}}>
-                                    <Image source={{uri: item.gifUrl}} style={{width: 50, height: 50, borderRadius: 5, marginRight: 10, backgroundColor: '#eee'}} />
-                                    <View style={{flex:1}}>
-                                        <Text style={{fontWeight:'bold', color: colores.texto, textTransform:'capitalize'}}>{item.name}</Text>
-                                        <Text style={{color: colores.subtexto, fontSize: 12, textTransform:'capitalize'}}>{item.bodyPart} | {item.target}</Text>
-                                    </View>
-                                </View>
-                                <Ionicons name="add-circle" size={24} color={colores.primario}/>
-                            </TouchableOpacity>
-                        )}
-                    />
-                ) : (
-                    <SectionList
-                        sections={seccionesCatalogoLocal}
-                        keyExtractor={(item) => item.id.toString()}
-                        initialNumToRender={10} maxToRenderPerBatch={10} windowSize={5} removeClippedSubviews={true}
-                        contentContainerStyle={{paddingBottom: 50}}
-                        renderItem={({item}) => (
-                            <TouchableOpacity style={[styles.itemCatalogo, {backgroundColor: colores.tarjeta}]} onPress={()=>seleccionarDeBiblioteca(item, false)}>
-                                <Text style={{fontWeight:'bold', color: colores.texto}}>{item.nombre}</Text>
-                                <Ionicons name="add-circle" size={24} color={colores.primario}/>
-                            </TouchableOpacity>
-                        )}
-                        renderSectionHeader={({section: {title}}) => (
-                            <View style={{backgroundColor: colores.seccionHeader, padding: 8, paddingLeft: 15}}>
-                                <Text style={{fontWeight: 'bold', color: colores.texto, textTransform:'uppercase', fontSize: 12}}>{title}</Text>
-                            </View>
-                        )}
-                        stickySectionHeadersEnabled={true}
-                    />
-                )}
+                    )}
+                    stickySectionHeadersEnabled
+                />
             </SafeAreaView>
         </Modal>
     </SafeAreaView>
