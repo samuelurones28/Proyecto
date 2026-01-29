@@ -1,39 +1,107 @@
--- Migracion para corregir las politicas RLS de la tabla perfil
+-- Migracion para corregir las politicas RLS de TODAS las tablas
 -- Ejecutar en Supabase SQL Editor: https://supabase.com/dashboard/project/fchlslsvtghfgwyikfgo/sql
 
--- 1. Verificar que la columna onboarding_completado existe
+-- =====================================================
+-- TABLA: perfil
+-- =====================================================
 ALTER TABLE public.perfil
 ADD COLUMN IF NOT EXISTS onboarding_completado BOOLEAN DEFAULT false;
 
--- 2. Verificar que RLS esta habilitado (si no lo esta, habilitarlo)
 ALTER TABLE public.perfil ENABLE ROW LEVEL SECURITY;
 
--- 3. Eliminar politicas existentes que puedan estar causando conflictos
 DROP POLICY IF EXISTS "Allow public access to perfil" ON public.perfil;
 DROP POLICY IF EXISTS "Allow all operations on perfil" ON public.perfil;
 
--- 4. Crear politica que permite todas las operaciones
--- NOTA: Esta politica es para DESARROLLO. En produccion, implementar autenticacion
--- y usar politicas basadas en auth.uid()
 CREATE POLICY "Allow all operations on perfil" ON public.perfil
-  FOR ALL
-  USING (true)
-  WITH CHECK (true);
+  FOR ALL USING (true) WITH CHECK (true);
 
--- 5. Hacer lo mismo para la tabla mediciones (tambien usada en onboarding)
+-- =====================================================
+-- TABLA: mediciones
+-- =====================================================
 ALTER TABLE public.mediciones ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Allow all operations on mediciones" ON public.mediciones;
 
 CREATE POLICY "Allow all operations on mediciones" ON public.mediciones
-  FOR ALL
-  USING (true)
-  WITH CHECK (true);
+  FOR ALL USING (true) WITH CHECK (true);
 
--- IMPORTANTE: Para produccion, reemplazar estas politicas por:
+-- =====================================================
+-- TABLA: rutinas_personalizadas
+-- =====================================================
+ALTER TABLE public.rutinas_personalizadas ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow all operations on rutinas_personalizadas" ON public.rutinas_personalizadas;
+
+CREATE POLICY "Allow all operations on rutinas_personalizadas" ON public.rutinas_personalizadas
+  FOR ALL USING (true) WITH CHECK (true);
+
+-- =====================================================
+-- TABLA: planes_semanales
+-- =====================================================
+ALTER TABLE public.planes_semanales ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow all operations on planes_semanales" ON public.planes_semanales;
+
+CREATE POLICY "Allow all operations on planes_semanales" ON public.planes_semanales
+  FOR ALL USING (true) WITH CHECK (true);
+
+-- =====================================================
+-- TABLA: catalogo_ejercicios
+-- =====================================================
+ALTER TABLE public.catalogo_ejercicios ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow all operations on catalogo_ejercicios" ON public.catalogo_ejercicios;
+
+CREATE POLICY "Allow all operations on catalogo_ejercicios" ON public.catalogo_ejercicios
+  FOR ALL USING (true) WITH CHECK (true);
+
+-- =====================================================
+-- TABLA: historial_series
+-- =====================================================
+ALTER TABLE public.historial_series ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow all operations on historial_series" ON public.historial_series;
+
+CREATE POLICY "Allow all operations on historial_series" ON public.historial_series
+  FOR ALL USING (true) WITH CHECK (true);
+
+-- =====================================================
+-- TABLA: historial_entrenamientos
+-- =====================================================
+ALTER TABLE public.historial_entrenamientos ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow all operations on historial_entrenamientos" ON public.historial_entrenamientos;
+
+CREATE POLICY "Allow all operations on historial_entrenamientos" ON public.historial_entrenamientos
+  FOR ALL USING (true) WITH CHECK (true);
+
+-- =====================================================
+-- TABLA: calendario_acciones
+-- =====================================================
+ALTER TABLE public.calendario_acciones ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow all operations on calendario_acciones" ON public.calendario_acciones;
+
+CREATE POLICY "Allow all operations on calendario_acciones" ON public.calendario_acciones
+  FOR ALL USING (true) WITH CHECK (true);
+
+-- =====================================================
+-- TABLA: comidas (diario_alimentos)
+-- =====================================================
+ALTER TABLE public.comidas ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow all operations on comidas" ON public.comidas;
+
+CREATE POLICY "Allow all operations on comidas" ON public.comidas
+  FOR ALL USING (true) WITH CHECK (true);
+
+-- =====================================================
+-- IMPORTANTE: Para produccion, implementar autenticacion
+-- y reemplazar estas politicas por unas basadas en auth.uid()
+-- =====================================================
 /*
--- Politica basada en autenticacion
-CREATE POLICY "Users can manage their own profile" ON public.perfil
+-- Ejemplo de politica con autenticacion:
+CREATE POLICY "Users can manage their own data" ON public.perfil
   FOR ALL
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);

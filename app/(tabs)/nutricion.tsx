@@ -88,7 +88,7 @@ export default function NutricionScreen() {
   };
 
   const elegirFoto = async () => {
-    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [4, 3], quality: 0.5 });
+    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['image'], allowsEditing: true, aspect: [4, 3], quality: 0.5 });
     if (!result.canceled) analizarConIA(result.assets[0].uri);
   };
 
