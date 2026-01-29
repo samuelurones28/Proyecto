@@ -4,6 +4,7 @@ import { router } from 'expo-router';
 import { supabase } from '../supabase';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useOnboarding } from './_layout';
 
 const { width } = Dimensions.get('window');
 const DIAS = [{ id: 'lunes', label: 'LU' }, { id: 'martes', label: 'MA' }, { id: 'miercoles', label: 'MI' }, { id: 'jueves', label: 'JU' }, { id: 'viernes', label: 'VI' }, { id: 'sabado', label: 'SA' }, { id: 'domingo', label: 'DO' }];
@@ -34,6 +35,7 @@ export default function OnboardingScreen() {
   const [pasoActual, setPasoActual] = useState(0);
   const [guardando, setGuardando] = useState(false);
   const [datos, setDatos] = useState({ nombre: '', edad: '', altura: '', peso: '', objetivo: '', nivel_actividad: '', dias_no_disponibles: '' });
+  const { setOnboardingCompleto } = useOnboarding();
 
   const colores = useMemo(() => ({
     fondo: esOscuro ? '#000000' : '#f2f2f7', tarjeta: esOscuro ? '#1c1c1e' : '#ffffff',
@@ -82,6 +84,8 @@ export default function OnboardingScreen() {
         if (error) throw error;
       }
       if (datos.peso) await supabase.from('mediciones').insert([{ peso: parseFloat(datos.peso), fecha: new Date().toISOString().split('T')[0] }]);
+      // Actualizar el estado del contexto ANTES de navegar para evitar el bucle
+      setOnboardingCompleto(true);
       router.replace('/(tabs)');
     } catch (e: any) { Alert.alert('Error', e.message || 'No se pudo guardar el perfil'); }
     finally { setGuardando(false); }
