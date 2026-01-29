@@ -154,9 +154,9 @@ export default function PerfilScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colores.fondo }]}>
       <View style={[styles.headerTop, { backgroundColor: colores.tarjeta, borderColor: colores.borde }]}>
-        <Text style={[styles.tituloHeader, { color: colores.texto }]}>Perfil Atleta</Text>
-        <TouchableOpacity onPress={() => setModalInfoVisible(true)}>
-          <Ionicons name="information-circle-outline" size={28} color={colores.primario} />
+        <Text style={[styles.tituloHeader, { color: colores.texto }]}>Mi Perfil</Text>
+        <TouchableOpacity onPress={() => setModalInfoVisible(true)} style={{flexDirection: 'row', alignItems: 'center'}}>
+          <Ionicons name="settings-outline" size={24} color={colores.primario} />
         </TouchableOpacity>
       </View>
 
@@ -165,6 +165,15 @@ export default function PerfilScreen() {
           <View style={styles.avatarContainer}>
             <View style={[styles.avatar, {backgroundColor: colores.primario}]}><Text style={styles.avatarText}>{datos.nombre ? datos.nombre.charAt(0).toUpperCase() : "A"}</Text></View>
             <Text style={{fontSize:18, fontWeight:'bold', color: colores.texto}}>{datos.nombre || "Tu Nombre"}</Text>
+            {(datos.edad || datos.altura || datos.peso) && (
+              <Text style={{fontSize:14, color: colores.subtexto, marginTop: 4}}>
+                {[
+                  datos.edad ? `${datos.edad} años` : null,
+                  datos.altura ? `${datos.altura} cm` : null,
+                  datos.peso ? `${datos.peso} kg` : null
+                ].filter(Boolean).join(' · ')}
+              </Text>
+            )}
           </View>
 
           {cargando ? <ActivityIndicator size="large" color={colores.primario} /> : (
@@ -205,16 +214,29 @@ export default function PerfilScreen() {
                 })}
               </View>
 
-              <Text style={styles.seccionTitulo}>Datos Físicos</Text>
+              <Text style={styles.seccionTitulo}>Datos Personales</Text>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Nombre</Text>
+                <TextInput style={[styles.input, {backgroundColor: colores.inputBg, color: colores.texto}]} value={datos.nombre} onChangeText={(t)=>setDatos({...datos, nombre:t})} placeholder="Tu nombre" placeholderTextColor={colores.subtexto} />
+              </View>
               <View style={styles.row}>
-                <View style={[styles.inputGroup, {flex:2, marginRight:10}]}>
-                    <Text style={styles.label}>Nombre</Text>
-                    <TextInput style={[styles.input, {backgroundColor: colores.inputBg, color: colores.texto}]} value={datos.nombre} onChangeText={(t)=>setDatos({...datos, nombre:t})} />
+                <View style={[styles.inputGroup, {flex:1, marginRight:10}]}>
+                    <Text style={styles.label}>Edad</Text>
+                    <TextInput style={[styles.input, {backgroundColor: colores.inputBg, color: colores.texto}]} value={datos.edad} keyboardType="numeric" onChangeText={(t)=>setDatos({...datos, edad:t})} placeholder="Años" placeholderTextColor={colores.subtexto} />
+                </View>
+                <View style={[styles.inputGroup, {flex:1, marginRight:10}]}>
+                    <Text style={styles.label}>Altura (cm)</Text>
+                    <TextInput style={[styles.input, {backgroundColor: colores.inputBg, color: colores.texto}]} value={datos.altura} keyboardType="numeric" onChangeText={(t)=>setDatos({...datos, altura:t})} placeholder="cm" placeholderTextColor={colores.subtexto} />
                 </View>
                 <View style={[styles.inputGroup, {flex:1}]}>
                     <Text style={styles.label}>Peso (kg)</Text>
-                    <TextInput style={[styles.input, {backgroundColor: colores.inputBg, color: colores.texto}]} value={datos.peso} keyboardType="numeric" onChangeText={(t)=>setDatos({...datos, peso:t})} />
+                    <TextInput style={[styles.input, {backgroundColor: colores.inputBg, color: colores.texto}]} value={datos.peso} keyboardType="numeric" onChangeText={(t)=>setDatos({...datos, peso:t})} placeholder="kg" placeholderTextColor={colores.subtexto} />
                 </View>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Lesiones o limitaciones (opcional)</Text>
+                <TextInput style={[styles.input, {backgroundColor: colores.inputBg, color: colores.texto}]} value={datos.lesiones} onChangeText={(t)=>setDatos({...datos, lesiones:t})} placeholder="Ej: Lesion de rodilla, dolor de espalda..." placeholderTextColor={colores.subtexto} multiline />
               </View>
 
               <Text style={styles.seccionTitulo}>Calibración Manual (Opcional)</Text>
@@ -240,14 +262,23 @@ export default function PerfilScreen() {
       <Modal visible={modalInfoVisible} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, {backgroundColor: colores.tarjeta}]}>
-            <Text style={[styles.modalTitleEdit, {color: colores.texto}]}>Configuración</Text>
-            <Text style={{marginBottom:20, lineHeight:20, color: colores.subtexto}}>
-              • Los "Días que NO puedes entrenar" le dicen a la IA y al calendario cuándo debes descansar obligatoriamente.
-              {"\n"}• El "Nivel de Actividad" recalcula tus calorías diarias automáticamente.
-              {"\n"}• El "Tema" cambia los colores de la aplicación.
-            </Text>
-            <TouchableOpacity style={[styles.btnGuardar, {backgroundColor: colores.primario, marginTop:0}]} onPress={() => setModalInfoVisible(false)}>
-              <Text style={{fontWeight:'bold', color:'white', textAlign:'center'}}>Cerrar</Text>
+            <Text style={[styles.modalTitleEdit, {color: colores.texto}]}>Ajustes del Perfil</Text>
+            <ScrollView style={{maxHeight: 300}}>
+              <Text style={{marginBottom:20, lineHeight:22, color: colores.subtexto}}>
+                <Text style={{fontWeight: 'bold', color: colores.texto}}>Datos Personales</Text>
+                {"\n"}Tu nombre, edad, altura y peso se usan para personalizar las recomendaciones del coach IA y calcular tus necesidades calorias.
+                {"\n\n"}<Text style={{fontWeight: 'bold', color: colores.texto}}>Objetivo</Text>
+                {"\n"}Define tu meta actual: definicion (-400 kcal), recomposicion o volumen (+300 kcal).
+                {"\n\n"}<Text style={{fontWeight: 'bold', color: colores.texto}}>Nivel de Actividad</Text>
+                {"\n"}Ajusta el multiplicador de calorias segun tu frecuencia de entrenamiento.
+                {"\n\n"}<Text style={{fontWeight: 'bold', color: colores.texto}}>Dias NO disponibles</Text>
+                {"\n"}La IA y el calendario respetaran estos dias como descanso obligatorio.
+                {"\n\n"}<Text style={{fontWeight: 'bold', color: colores.texto}}>Calibracion Manual</Text>
+                {"\n"}Si prefieres establecer tus macros manualmente, estos valores tendran prioridad sobre los calculos automaticos.
+              </Text>
+            </ScrollView>
+            <TouchableOpacity style={[styles.btnGuardar, {backgroundColor: colores.primario, marginTop:10}]} onPress={() => setModalInfoVisible(false)}>
+              <Text style={{fontWeight:'bold', color:'white', textAlign:'center'}}>Entendido</Text>
             </TouchableOpacity>
           </View>
         </View>
