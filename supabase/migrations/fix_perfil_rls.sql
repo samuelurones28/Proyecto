@@ -1,4 +1,4 @@
--- Migracion para corregir las politicas RLS de TODAS las tablas
+-- Migracion para corregir las politicas RLS de las tablas existentes
 -- Ejecutar en Supabase SQL Editor: https://supabase.com/dashboard/project/fchlslsvtghfgwyikfgo/sql
 
 -- =====================================================
@@ -66,16 +66,6 @@ CREATE POLICY "Allow all operations on historial_series" ON public.historial_ser
   FOR ALL USING (true) WITH CHECK (true);
 
 -- =====================================================
--- TABLA: historial_entrenamientos
--- =====================================================
-ALTER TABLE public.historial_entrenamientos ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Allow all operations on historial_entrenamientos" ON public.historial_entrenamientos;
-
-CREATE POLICY "Allow all operations on historial_entrenamientos" ON public.historial_entrenamientos
-  FOR ALL USING (true) WITH CHECK (true);
-
--- =====================================================
 -- TABLA: calendario_acciones
 -- =====================================================
 ALTER TABLE public.calendario_acciones ENABLE ROW LEVEL SECURITY;
@@ -99,10 +89,3 @@ CREATE POLICY "Allow all operations on comidas" ON public.comidas
 -- IMPORTANTE: Para produccion, implementar autenticacion
 -- y reemplazar estas politicas por unas basadas en auth.uid()
 -- =====================================================
-/*
--- Ejemplo de politica con autenticacion:
-CREATE POLICY "Users can manage their own data" ON public.perfil
-  FOR ALL
-  USING (auth.uid() = user_id)
-  WITH CHECK (auth.uid() = user_id);
-*/
