@@ -404,9 +404,8 @@ export default function RutinasScreen() {
       const nueva = { user_id: user.id, nombre: nombreNuevaRutina, ejercicios: [] };
       const { data, error } = await supabase.from('rutinas_personalizadas').insert(nueva).select();
       if (!error && data) {
-          setModalNombreRutinaVisible(false); setNombreNuevaRutina(''); 
-          await cargarMisRutinas(); 
-          abrirRutina(data[0], true); 
+          setModalNombreRutinaVisible(false); setNombreNuevaRutina('');
+          await cargarMisRutinas();
       }
   };
 
