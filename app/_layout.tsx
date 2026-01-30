@@ -9,13 +9,16 @@ import { useState, useEffect, createContext, useContext } from 'react';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { ThemeProvider as CustomThemeProvider } from '../components/ThemeContext';
 import { WorkoutProvider } from '../components/WorkoutContext';
+import { AuthProvider, useAuth } from '../components/AuthContext';
 import { supabase } from '../supabase';
+import AuthScreen from './auth';
 
 // Ignorar advertencias específicas que no rompen la app en desarrollo
 LogBox.ignoreLogs([
   'expo-notifications',
   'Route "./components/ThemeContext.tsx"',
-  'Route "./components/WorkoutContext.tsx"'
+  'Route "./components/WorkoutContext.tsx"',
+  'Route "./components/AuthContext.tsx"'
 ]);
 
 export const unstable_settings = {
@@ -39,12 +42,19 @@ export const useOnboarding = () => useContext(OnboardingContext);
 
 function OnboardingProvider({ children }: { children: React.ReactNode }) {
   const [onboardingCompleto, setOnboardingCompleto] = useState<boolean | null>(null);
+  const { user } = useAuth();
 
   const verificarOnboarding = async () => {
+    if (!user) {
+      setOnboardingCompleto(null);
+      return;
+    }
+
     try {
       const { data, error } = await supabase
         .from('perfil')
         .select('onboarding_completado, nombre')
+        .eq('user_id', user.id)
         .limit(1);
 
       if (error) throw error;
@@ -62,8 +72,10 @@ function OnboardingProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    verificarOnboarding();
-  }, []);
+    if (user) {
+      verificarOnboarding();
+    }
+  }, [user]);
 
   return (
     <OnboardingContext.Provider value={{ onboardingCompleto, setOnboardingCompleto, verificarOnboarding }}>
@@ -102,27 +114,52 @@ function NavigationHandler({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-export default function RootLayout() {
+// Componente que maneja la navegación basada en autenticación
+function RootLayoutNav() {
   const colorScheme = useColorScheme();
+  const { user, loading } = useAuth();
 
+  // Mostrar loading mientras se verifica la sesión
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colorScheme === 'dark' ? '#000' : '#f2f2f7' }}>
+        <ActivityIndicator size="large" color="#007AFF" />
+      </View>
+    );
+  }
+
+  // Si no hay usuario, mostrar pantalla de autenticación
+  if (!user) {
+    return <AuthScreen />;
+  }
+
+  // Usuario autenticado, mostrar la app con onboarding check
+  return (
+    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      <WorkoutProvider>
+        <OnboardingProvider>
+          <NavigationHandler>
+            <Stack>
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+              <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+            </Stack>
+            <StatusBar style="auto" />
+          </NavigationHandler>
+        </OnboardingProvider>
+      </WorkoutProvider>
+    </ThemeProvider>
+  );
+}
+
+export default function RootLayout() {
   return (
     <SafeAreaProvider>
-      <CustomThemeProvider>
-        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-          <WorkoutProvider>
-            <OnboardingProvider>
-              <NavigationHandler>
-                <Stack>
-                  <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                  <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-                  <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-                </Stack>
-                <StatusBar style="auto" />
-              </NavigationHandler>
-            </OnboardingProvider>
-          </WorkoutProvider>
-        </ThemeProvider>
-      </CustomThemeProvider>
+      <AuthProvider>
+        <CustomThemeProvider>
+          <RootLayoutNav />
+        </CustomThemeProvider>
+      </AuthProvider>
     </SafeAreaProvider>
   );
 }

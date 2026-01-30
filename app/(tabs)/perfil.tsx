@@ -1,14 +1,17 @@
 import { useState, useCallback } from 'react';
-import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, Modal, Appearance, useColorScheme } from 'react-native';
+import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, Alert, KeyboardAvoidingView, Platform, ActivityIndicator, Modal } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../components/ThemeContext';
+import { useAuth } from '../../components/AuthContext';
+import { useAppColors } from '../../hooks/useAppColors';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function PerfilScreen() {
-  const { theme, changeTheme } = useTheme();
-  const systemScheme = useColorScheme(); 
+  const { changeTheme } = useTheme();
+  const { user, signOut } = useAuth();
+  const { esOscuro, colores } = useAppColors();
   const [cargando, setCargando] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [modalInfoVisible, setModalInfoVisible] = useState(false);
@@ -31,36 +34,36 @@ export default function PerfilScreen() {
     tema: 'system'
   });
 
-  const esOscuro = theme === 'dark' ? true : theme === 'light' ? false : systemScheme === 'dark';
-  const colores = {
-    fondo: esOscuro ? '#000000' : '#f2f2f7',
-    tarjeta: esOscuro ? '#1c1c1e' : '#ffffff',
-    texto: esOscuro ? '#ffffff' : '#1c1c1e',
-    subtexto: esOscuro ? '#8e8e93' : '#8e8e93',
-    borde: esOscuro ? '#2c2c2e' : '#e5e5ea',
-    inputBg: esOscuro ? '#2c2c2e' : '#f2f2f7',
-    primario: '#007AFF',
-    danger: '#FF3B30'
-  };
-
   const styles = getStyles(colores);
 
   useFocusEffect(
     useCallback(() => {
       cargarPerfil();
-    }, [])
+    }, [user])
   );
 
+  const handleSignOut = () => {
+    Alert.alert(
+      'Cerrar Sesión',
+      '¿Estás seguro de que quieres cerrar sesión?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Cerrar Sesión', style: 'destructive', onPress: signOut }
+      ]
+    );
+  };
+
   const cargarPerfil = async () => {
+    if (!user) return;
     setCargando(true);
     try {
-      let { data: perfilData, error } = await supabase.from('perfil').select('*').limit(1);
+      let { data: perfilData, error } = await supabase.from('perfil').select('*').eq('user_id', user.id).limit(1);
       if (error) throw error;
       if (!perfilData || perfilData.length === 0) {
-        const { data: newProfile } = await supabase.from('perfil').insert([{}]).select();
+        const { data: newProfile } = await supabase.from('perfil').insert([{ user_id: user.id }]).select();
         perfilData = newProfile;
       }
-      const { data: pesoData } = await supabase.from('mediciones').select('peso').order('fecha', { ascending: false }).limit(1);
+      const { data: pesoData } = await supabase.from('mediciones').select('peso').eq('user_id', user.id).order('fecha', { ascending: false }).limit(1);
       
       const p = perfilData[0];
       const temaGuardado = p.tema || 'system';
@@ -101,7 +104,7 @@ export default function PerfilScreen() {
   };
 
   const guardarCambios = async () => {
-    if (!datos.id) return;
+    if (!datos.id || !user) return;
     setGuardando(true);
     try {
       const { error } = await supabase.from('perfil').update({
@@ -118,9 +121,9 @@ export default function PerfilScreen() {
         meta_carbos: parseFloat(datos.meta_carbos) || null,
         meta_grasas: parseFloat(datos.meta_grasas) || null,
         tema: datos.tema
-      }).eq('id', datos.id);
+      }).eq('id', datos.id).eq('user_id', user.id);
       if (error) throw error;
-      Alert.alert("¡Éxito! ✅", "Perfil actualizado.");
+      Alert.alert("Perfil actualizado", "Los cambios se han guardado correctamente.");
     } catch (e) { Alert.alert("Error", e.message); } finally { setGuardando(false); }
   };
 
@@ -253,6 +256,13 @@ export default function PerfilScreen() {
 
               <TouchableOpacity style={[styles.btnGuardar, {backgroundColor: colores.primario}]} onPress={guardarCambios} disabled={guardando}>
                 <Text style={styles.btnGuardarText}>{guardando ? "Guardando..." : "GUARDAR CAMBIOS"}</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={[styles.btnGuardar, {backgroundColor: colores.danger, marginTop: 15}]} onPress={handleSignOut}>
+                <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8}}>
+                  <Ionicons name="log-out-outline" size={20} color="white" />
+                  <Text style={styles.btnGuardarText}>CERRAR SESIÓN</Text>
+                </View>
               </TouchableOpacity>
             </View>
           )}
