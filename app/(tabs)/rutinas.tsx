@@ -36,6 +36,7 @@ export default function RutinasScreen() {
   } = useWorkout();
 
   const [vistaEntrenoExpandida, setVistaEntrenoExpandida] = useState(false);
+  const [modoEdicion, setModoEdicion] = useState(false);
 
   useEffect(() => {
     if (params.expandir === 'true') {
@@ -387,14 +388,23 @@ export default function RutinasScreen() {
     } catch (e) { console.error(e); } finally { setLoadingStats(false); }
   };
 
-  const abrirRutina = (rutina, esPersonalizada, tituloOverride = null) => {
+  const abrirRutina = (rutina, esPersonalizada, tituloOverride = null, soloEditar = false) => {
       if (!rutina || typeof rutina !== 'object') { Alert.alert("Descanso", "Día libre."); return; }
-      
+
       const rutinaLimpia = normalizarRutina(rutina, tituloOverride || rutina.nombre);
       if (esPersonalizada) rutinaLimpia.id = rutina.id;
       rutinaLimpia.esPersonalizada = esPersonalizada;
-      
-      iniciarRutina(rutinaLimpia);
+
+      if (soloEditar) {
+          // Modo edición: solo carga la rutina sin iniciar cronómetro
+          setRutinaActiva(rutinaLimpia);
+          setModoEdicion(true);
+      } else {
+          // Modo entrenamiento: inicia cronómetro
+          iniciarRutina(rutinaLimpia);
+          setModoEdicion(false);
+      }
+
       setVistaEntrenoExpandida(true);
       cargarHistorialPrevio(rutinaLimpia.ejercicios);
   };
@@ -404,9 +414,9 @@ export default function RutinasScreen() {
       const nueva = { user_id: user.id, nombre: nombreNuevaRutina, ejercicios: [] };
       const { data, error } = await supabase.from('rutinas_personalizadas').insert(nueva).select();
       if (!error && data) {
-          setModalNombreRutinaVisible(false); setNombreNuevaRutina(''); 
-          await cargarMisRutinas(); 
-          abrirRutina(data[0], true); 
+          setModalNombreRutinaVisible(false); setNombreNuevaRutina('');
+          await cargarMisRutinas();
+          abrirRutina(data[0], true, null, true); // Modo edición
       }
   };
 
@@ -478,17 +488,18 @@ export default function RutinasScreen() {
       setRutinaActiva(c); 
   };
 
-  const toggleCheck = (eIdx, sIdx) => { 
-      const c = { ...rutinaActiva }; 
+  const toggleCheck = (eIdx, sIdx) => {
+      const c = { ...rutinaActiva };
       c.ejercicios = [...rutinaActiva.ejercicios];
       c.ejercicios[eIdx] = { ...c.ejercicios[eIdx] };
       c.ejercicios[eIdx].seriesDetalladas = [...c.ejercicios[eIdx].seriesDetalladas];
       c.ejercicios[eIdx].seriesDetalladas[sIdx] = { ...c.ejercicios[eIdx].seriesDetalladas[sIdx] };
 
-      c.ejercicios[eIdx].seriesDetalladas[sIdx].completado = !c.ejercicios[eIdx].seriesDetalladas[sIdx].completado; 
-      setRutinaActiva(c); 
-      
-      if (c.ejercicios[eIdx].seriesDetalladas[sIdx].completado) {
+      c.ejercicios[eIdx].seriesDetalladas[sIdx].completado = !c.ejercicios[eIdx].seriesDetalladas[sIdx].completado;
+      setRutinaActiva(c);
+
+      // Solo iniciar descanso en modo entrenamiento, no en modo edición
+      if (!modoEdicion && c.ejercicios[eIdx].seriesDetalladas[sIdx].completado) {
           iniciarDescanso();
       }
   };
@@ -570,7 +581,20 @@ export default function RutinasScreen() {
                 </View>
                 {misRutinas.map((rutina) => (
                     <View key={rutina.id} style={[styles.cardPersonalizada, {backgroundColor: colores.tarjeta}]}>
-                        <TouchableOpacity style={{flex:1}} onPress={() => abrirRutina(rutina, true)}><Text style={[styles.tituloPersonalizada, {color: colores.texto}]}>{rutina.nombre}</Text><Text style={[styles.subPersonalizada, {color: colores.subtexto}]}>{rutina.ejercicios?.length || 0} Ejercicios</Text></TouchableOpacity>
+                        <View style={{flex:1}}>
+                            <Text style={[styles.tituloPersonalizada, {color: colores.texto}]}>{rutina.nombre}</Text>
+                            <Text style={[styles.subPersonalizada, {color: colores.subtexto}]}>{rutina.ejercicios?.length || 0} Ejercicios</Text>
+                            <View style={{flexDirection:'row', gap:10, marginTop:10}}>
+                                <TouchableOpacity onPress={() => abrirRutina(rutina, true, null, true)} style={{backgroundColor: colores.inputBg, paddingHorizontal:15, paddingVertical:8, borderRadius:8, flexDirection:'row', alignItems:'center', gap:5}}>
+                                    <Ionicons name="create-outline" size={16} color={colores.texto} />
+                                    <Text style={{color: colores.texto, fontWeight:'600', fontSize:13}}>Editar</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity onPress={() => abrirRutina(rutina, true, null, false)} style={{backgroundColor: colores.primario, paddingHorizontal:15, paddingVertical:8, borderRadius:8, flexDirection:'row', alignItems:'center', gap:5}}>
+                                    <Ionicons name="play" size={16} color="white" />
+                                    <Text style={{color: 'white', fontWeight:'600', fontSize:13}}>Entrenar</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
                         <TouchableOpacity onPress={() => eliminarRutinaPersonalizada(rutina.id)} style={{padding:10}}><Ionicons name="trash-outline" size={20} color="#FF3B30" /></TouchableOpacity>
                     </View>
                 ))}
@@ -589,17 +613,22 @@ export default function RutinasScreen() {
   return (
     <SafeAreaView style={[styles.container, {backgroundColor: colores.fondo}]}>
         <View style={[styles.headerEntreno, {backgroundColor: colores.tarjeta, borderColor: colores.borde}]}>
-            <TouchableOpacity onPress={() => { 
+            <TouchableOpacity onPress={() => {
                 setVistaEntrenoExpandida(false);
             }}>
                <Ionicons name="chevron-down" size={30} color={colores.texto} />
             </TouchableOpacity>
-            
+
             <View style={{alignItems: 'center'}}>
                 <Text style={[styles.tituloEntreno, {color: colores.texto}]}>{rutinaActiva.titulo}</Text>
-                <Text style={{color: colores.cronometro, fontWeight: 'bold', fontSize: 14, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace'}}>
-                    {formatearTiempo(tiempo)}
-                </Text>
+                {!modoEdicion && (
+                    <Text style={{color: colores.cronometro, fontWeight: 'bold', fontSize: 14, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace'}}>
+                        {formatearTiempo(tiempo)}
+                    </Text>
+                )}
+                {modoEdicion && (
+                    <Text style={{color: colores.subtexto, fontSize: 12}}>Modo Edición</Text>
+                )}
             </View>
 
             {rutinaActiva.esPersonalizada ? (
@@ -654,29 +683,43 @@ export default function RutinasScreen() {
             ))}
 
             <TouchableOpacity style={styles.btnBiblioteca} onPress={() => setModalBibliotecaVisible(true)}><Ionicons name="add-circle" size={24} color="white" /><Text style={{color:'white', fontWeight:'bold'}}>Añadir Ejercicio</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.btnTerminar} onPress={finalizarEntreno}><Text style={styles.txtTerminar}>TERMINAR RUTINA</Text></TouchableOpacity>
+
+            {modoEdicion ? (
+                <TouchableOpacity style={[styles.btnTerminar, {backgroundColor: colores.primario}]} onPress={() => {
+                    guardarCambiosRutinaActiva();
+                    setVistaEntrenoExpandida(false);
+                    setModoEdicion(false);
+                }}>
+                    <Text style={styles.txtTerminar}>GUARDAR Y CERRAR</Text>
+                </TouchableOpacity>
+            ) : (
+                <TouchableOpacity style={styles.btnTerminar} onPress={finalizarEntreno}><Text style={styles.txtTerminar}>TERMINAR RUTINA</Text></TouchableOpacity>
+            )}
+
             <View style={{height: 100}} />
         </ScrollView>
 
-        {descansoActivo ? (
-            <View style={styles.floatingTimerContainer}>
-                <TouchableOpacity style={styles.timerControlBtn} onPress={() => modificarTiempoEnCurso(-15)}>
-                    <Text style={{color:'white', fontWeight:'bold'}}>-15</Text>
-                </TouchableOpacity>
+        {!modoEdicion && (
+            descansoActivo ? (
+                <View style={styles.floatingTimerContainer}>
+                    <TouchableOpacity style={styles.timerControlBtn} onPress={() => modificarTiempoEnCurso(-15)}>
+                        <Text style={{color:'white', fontWeight:'bold'}}>-15</Text>
+                    </TouchableOpacity>
 
-                <TouchableOpacity style={styles.timerMainBtn} onPress={detenerDescanso}>
-                    <Text style={{color:'white', fontWeight:'bold', fontSize:18}}>{formatearTiempo(segundosRestantes)}</Text>
-                    <Text style={{color:'rgba(255,255,255,0.8)', fontSize:10}}>PARAR</Text>
-                </TouchableOpacity>
+                    <TouchableOpacity style={styles.timerMainBtn} onPress={detenerDescanso}>
+                        <Text style={{color:'white', fontWeight:'bold', fontSize:18}}>{formatearTiempo(segundosRestantes)}</Text>
+                        <Text style={{color:'rgba(255,255,255,0.8)', fontSize:10}}>PARAR</Text>
+                    </TouchableOpacity>
 
-                <TouchableOpacity style={styles.timerControlBtn} onPress={() => modificarTiempoEnCurso(15)}>
-                    <Text style={{color:'white', fontWeight:'bold'}}>+15</Text>
+                    <TouchableOpacity style={styles.timerControlBtn} onPress={() => modificarTiempoEnCurso(15)}>
+                        <Text style={{color:'white', fontWeight:'bold'}}>+15</Text>
+                    </TouchableOpacity>
+                </View>
+            ) : (
+                <TouchableOpacity style={styles.floatingTimer} onPress={() => setModalDescansoVisible(true)}>
+                    <Ionicons name="timer-outline" size={28} color="white" />
                 </TouchableOpacity>
-            </View>
-        ) : (
-            <TouchableOpacity style={styles.floatingTimer} onPress={() => setModalDescansoVisible(true)}>
-                <Ionicons name="timer-outline" size={28} color="white" />
-            </TouchableOpacity>
+            )
         )}
 
         <Modal visible={modalDescansoVisible} transparent animationType="fade">
