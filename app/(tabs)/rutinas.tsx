@@ -433,6 +433,19 @@ export default function RutinasScreen() {
       Alert.alert("Eliminar", "¿Borrar?", [{ text: "Cancelar" }, { text: "Borrar", style: 'destructive', onPress: async () => { if (user) { await supabase.from('rutinas_personalizadas').delete().eq('id', id).eq('user_id', user.id); cargarMisRutinas(); } }}]);
   };
 
+  const descartarRutina = () => {
+    Alert.alert("¿Descartar rutina?", "Se perderán todos los datos de este entrenamiento.", [
+        { text: "Cancelar" },
+        { text: "Descartar", style: 'destructive', onPress: () => {
+            finalizarRutina(() => {
+                // No guardar nada, solo limpiar el estado
+                setVistaEntrenoExpandida(false);
+                setModoEdicion(false);
+            });
+        }}
+    ]);
+  };
+
   const finalizarEntreno = async () => {
     if (!user) return;
     Alert.alert("¿Terminar?", `Tiempo total: ${formatearTiempo(tiempo)}. Se guardarán tus series.`, [
@@ -693,7 +706,15 @@ export default function RutinasScreen() {
                     <Text style={styles.txtTerminar}>GUARDAR Y CERRAR</Text>
                 </TouchableOpacity>
             ) : (
-                <TouchableOpacity style={styles.btnTerminar} onPress={finalizarEntreno}><Text style={styles.txtTerminar}>TERMINAR RUTINA</Text></TouchableOpacity>
+                <>
+                    <TouchableOpacity style={styles.btnTerminar} onPress={finalizarEntreno}>
+                        <Text style={styles.txtTerminar}>TERMINAR RUTINA</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.btnDescartar, {backgroundColor: colores.tarjeta, borderWidth: 2, borderColor: '#FF3B30'}]} onPress={descartarRutina}>
+                        <Ionicons name="close-circle-outline" size={24} color="#FF3B30" />
+                        <Text style={[styles.txtTerminar, {color: '#FF3B30'}]}>DESCARTAR RUTINA</Text>
+                    </TouchableOpacity>
+                </>
             )}
 
             <View style={{height: 100}} />
@@ -886,6 +907,7 @@ const styles = StyleSheet.create({
   btnControl: { backgroundColor: '#f0f0f0', width: 40, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   btnBiblioteca: { flexDirection:'row', backgroundColor:'#666', padding:15, borderRadius:15, justifyContent:'center', alignItems:'center', gap:10, marginBottom:10 },
   btnTerminar: { backgroundColor: '#34C759', padding: 18, borderRadius: 15, alignItems: 'center', shadowColor: '#34C759', shadowOpacity: 0.3, elevation: 5 },
+  btnDescartar: { padding: 18, borderRadius: 15, alignItems: 'center', marginTop: 10, flexDirection: 'row', justifyContent: 'center', gap: 10 },
   txtTerminar: { color: 'white', fontWeight: 'bold', fontSize: 18 },
   modalContainer: { flex: 1 },
   searchBar: { flexDirection: 'row', margin: 15, padding: 10, borderRadius: 10, alignItems: 'center', gap: 10 },

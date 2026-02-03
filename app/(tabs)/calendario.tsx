@@ -36,7 +36,10 @@ export default function CalendarioScreen() {
   const [cargando, setCargando] = useState(false);
   const [cargandoIA, setCargandoIA] = useState(false);
   const [modalInfoVisible, setModalInfoVisible] = useState(false);
-  
+  const [modalDetalleEntrenoVisible, setModalDetalleEntrenoVisible] = useState(false);
+  const [detalleEntreno, setDetalleEntreno] = useState<Array<{nombre: string, series: Array<{serie: number, kg: number, reps: number}>}>>([]);
+  const [cargandoDetalle, setCargandoDetalle] = useState(false);
+
   const datosRef = useRef({ perfil: null, plan: null, historial: [] });
 
   const [markedDates, setMarkedDates] = useState({});
@@ -155,6 +158,38 @@ export default function CalendarioScreen() {
   const onDayPress = (day) => {
     setSelectedDate(day.dateString);
     recalcularMarcas(day.dateString); 
+  };
+
+  const cargarDetalleEntrenamiento = async (fecha: string) => {
+    if (!user) return;
+    setCargandoDetalle(true);
+    setModalDetalleEntrenoVisible(true);
+    try {
+      const { data } = await supabase
+        .from('historial_series')
+        .select('ejercicio, serie_index, kg, reps')
+        .eq('user_id', user.id)
+        .eq('fecha', fecha)
+        .order('ejercicio', { ascending: true })
+        .order('serie_index', { ascending: true });
+
+      if (data) {
+        // Agrupar por ejercicio
+        const agrupado = data.reduce((acc, serie) => {
+          if (!acc[serie.ejercicio]) {
+            acc[serie.ejercicio] = [];
+          }
+          acc[serie.ejercicio].push({ serie: serie.serie_index, kg: serie.kg, reps: serie.reps });
+          return acc;
+        }, {} as Record<string, Array<{serie: number, kg: number, reps: number}>>);
+
+        setDetalleEntreno(Object.entries(agrupado).map(([nombre, series]) => ({ nombre, series })));
+      }
+    } catch (e) {
+      console.error("Error cargando detalle:", e);
+    } finally {
+      setCargandoDetalle(false);
+    }
   };
 
   const eliminarDescanso = async () => {
@@ -281,6 +316,10 @@ export default function CalendarioScreen() {
                   <View style={styles.infoBox}>
                       <Text style={{color:'#333'}}>¡Gran trabajo! Has cumplido el objetivo.</Text>
                   </View>
+                  <TouchableOpacity style={[styles.btnEmpezar, {backgroundColor: colores.primario}]} onPress={() => cargarDetalleEntrenamiento(selectedDate)}>
+                    <Ionicons name="eye-outline" size={24} color="white" />
+                    <Text style={styles.txtBtn}>VER ENTRENAMIENTO</Text>
+                  </TouchableOpacity>
                   <TouchableOpacity style={styles.btnEliminar} onPress={eliminarCompletado}>
                      <Ionicons name="trash-outline" size={24} color="#FF3B30" />
                      <Text style={styles.txtEliminar}>Eliminar Registro</Text>
@@ -320,6 +359,54 @@ export default function CalendarioScreen() {
             </TouchableOpacity>
           </View>
         </View>
+      </Modal>
+
+      {/* MODAL DETALLE ENTRENAMIENTO */}
+      <Modal visible={modalDetalleEntrenoVisible} animationType="slide" presentationStyle="pageSheet">
+        <SafeAreaView style={{flex: 1, backgroundColor: colores.fondo}}>
+          <View style={styles.header}>
+            <Text style={styles.titulo}>Entrenamiento del {new Date(selectedDate).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })}</Text>
+            <TouchableOpacity onPress={() => setModalDetalleEntrenoVisible(false)}>
+              <Ionicons name="close-circle" size={30} color={colores.primario} />
+            </TouchableOpacity>
+          </View>
+
+          {cargandoDetalle ? (
+            <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
+              <ActivityIndicator size="large" color={colores.primario} />
+            </View>
+          ) : (
+            <ScrollView contentContainerStyle={{padding: 20, paddingBottom: 100}}>
+              {detalleEntreno.length === 0 ? (
+                <View style={{backgroundColor: colores.tarjeta, padding: 20, borderRadius: 15, alignItems: 'center'}}>
+                  <Text style={{color: colores.subtexto}}>No hay datos de este entrenamiento.</Text>
+                </View>
+              ) : (
+                detalleEntreno.map((ejercicio, idx) => (
+                  <View key={idx} style={{backgroundColor: colores.tarjeta, borderRadius: 15, padding: 15, marginBottom: 15}}>
+                    <Text style={{fontSize: 18, fontWeight: 'bold', color: colores.texto, marginBottom: 10}}>
+                      {ejercicio.nombre}
+                    </Text>
+
+                    <View style={{flexDirection: 'row', borderBottomWidth: 1, borderColor: colores.borde, paddingBottom: 8, marginBottom: 8}}>
+                      <Text style={{flex: 1, color: colores.subtexto, fontWeight: 'bold', fontSize: 12}}>SERIE</Text>
+                      <Text style={{flex: 1, color: colores.subtexto, fontWeight: 'bold', fontSize: 12, textAlign: 'center'}}>KG</Text>
+                      <Text style={{flex: 1, color: colores.subtexto, fontWeight: 'bold', fontSize: 12, textAlign: 'right'}}>REPS</Text>
+                    </View>
+
+                    {ejercicio.series.map((serie, sIdx) => (
+                      <View key={sIdx} style={{flexDirection: 'row', paddingVertical: 8, borderBottomWidth: 1, borderColor: colores.borde}}>
+                        <Text style={{flex: 1, color: colores.texto, fontSize: 16}}>{serie.serie}</Text>
+                        <Text style={{flex: 1, color: colores.texto, fontSize: 16, textAlign: 'center', fontWeight: 'bold'}}>{serie.kg}</Text>
+                        <Text style={{flex: 1, color: colores.texto, fontSize: 16, textAlign: 'right'}}>{serie.reps}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ))
+              )}
+            </ScrollView>
+          )}
+        </SafeAreaView>
       </Modal>
 
     </SafeAreaView>
