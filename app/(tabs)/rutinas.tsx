@@ -462,7 +462,7 @@ export default function RutinasScreen() {
                         });
                     });
                     if (seriesParaGuardar.length > 0) await supabase.from('historial_series').insert(seriesParaGuardar);
-                    if (!rutinaFinalizada.esPersonalizada) await supabase.from('calendario_acciones').upsert({ user_id: user.id, fecha: hoyISO, estado: 'completado' });
+                    await supabase.from('calendario_acciones').upsert({ user_id: user.id, fecha: hoyISO, estado: 'completado' });
                     Alert.alert("Hecho", "Entrenamiento registrado.");
                     setVistaEntrenoExpandida(false);
                 } catch (e) { Alert.alert("Error", e.message); } finally { setCargando(false); }

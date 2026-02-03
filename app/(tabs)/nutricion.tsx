@@ -123,7 +123,25 @@ export default function NutricionScreen() {
   };
 
   const elegirFoto = async () => {
-    let result = await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [4, 3], quality: 0.5 });
+    // Solicitar permiso de cámara
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+
+    if (status !== 'granted') {
+      Alert.alert(
+        'Permiso requerido',
+        'Necesitamos acceso a la cámara para analizar tus comidas. Por favor, habilita el permiso en la configuración de tu dispositivo.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    let result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.5
+    });
+
     if (!result.canceled) analizarConIA(result.assets[0].uri);
   };
 
@@ -131,7 +149,9 @@ export default function NutricionScreen() {
     setCargando(true);
     try {
       const base64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
-      
+
+      console.log('Enviando petición a Groq con modelo:', GROQ_VISION_MODEL);
+
       const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -148,32 +168,46 @@ export default function NutricionScreen() {
               ]
             }
           ],
-          model: GROQ_VISION_MODEL, 
+          model: GROQ_VISION_MODEL,
           temperature: 0.1,
           max_tokens: 1000
         })
       });
 
       const jsonResponse = await response.json();
-      if (jsonResponse.error) throw new Error(jsonResponse.error.message);
+      console.log('Respuesta de Groq:', JSON.stringify(jsonResponse, null, 2));
+
+      if (jsonResponse.error) {
+        console.error('Error de API:', jsonResponse.error);
+        throw new Error(jsonResponse.error.message);
+      }
+
       const responseText = jsonResponse.choices[0]?.message?.content || "";
+      console.log('Texto de respuesta:', responseText);
+
       const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      
-      if (!jsonMatch) throw new Error("No se pudo leer la respuesta de la IA.");
-      
+
+      if (!jsonMatch) {
+        console.error('No se encontró JSON en la respuesta');
+        throw new Error("No se pudo leer la respuesta de la IA.");
+      }
+
       const data = JSON.parse(jsonMatch[0]);
-      
-      prepararEdicion({ 
-          nombre: data.nombre, 
-          descripcion: data.explicacion, 
-          cantidad: data.peso_estimado_g, 
-          macros_100g: { kcal: data.kcal_100g, p: data.p_100g, c: data.c_100g, f: data.f_100g } 
+      console.log('Datos parseados:', data);
+
+      prepararEdicion({
+          nombre: data.nombre,
+          descripcion: data.explicacion,
+          cantidad: data.peso_estimado_g,
+          macros_100g: { kcal: data.kcal_100g, p: data.p_100g, c: data.c_100g, f: data.f_100g }
       });
 
-    } catch (e) { 
-        Alert.alert("Error IA", "No pude identificar el alimento. Intenta de nuevo."); 
-    } finally { 
-        setCargando(false); 
+    } catch (e) {
+        console.error('Error completo en analizarConIA:', e);
+        const errorMsg = e instanceof Error ? e.message : 'Error desconocido';
+        Alert.alert("Error IA", `No pude identificar el alimento.\n\nError: ${errorMsg}`);
+    } finally {
+        setCargando(false);
     }
   };
 

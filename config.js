@@ -9,4 +9,4 @@ export const RAPIDAPI_KEY = process.env.EXPO_PUBLIC_RAPIDAPI_KEY;
 
 // Modelos de IA
 export const GROQ_MODEL = "llama-3.3-70b-versatile";
-export const GROQ_VISION_MODEL = "llama-3.2-11b-vision-preview";
+export const GROQ_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
