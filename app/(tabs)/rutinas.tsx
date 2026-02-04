@@ -9,7 +9,8 @@ import * as Notifications from 'expo-notifications';
 import { useWorkout } from '../../components/WorkoutContext';
 import { useAuth } from '../../components/AuthContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { RAPIDAPI_KEY } from '../../config';
+import { RAPIDAPI_KEY, GROQ_API_KEY, GROQ_MODEL } from '../../config';
+import { normalizarNombreEjercicio, normalizarEjercicioConCatalogo } from '../../utils/exercises';
 
 // Configuración de notificaciones (esencial para iOS en primer plano)
 Notifications.setNotificationHandler({
@@ -81,11 +82,21 @@ export default function RutinasScreen() {
   const [modalNombreRutinaVisible, setModalNombreRutinaVisible] = useState(false);
   const [nombreNuevaRutina, setNombreNuevaRutina] = useState('');
 
-  const [historialPrevio, setHistorialPrevio] = useState({}); 
+  const [historialPrevio, setHistorialPrevio] = useState<Record<string, any[]>>({}); 
   const [modalStatsVisible, setModalStatsVisible] = useState(false);
   const [statsEjercicio, setStatsEjercicio] = useState(null);
   const [loadingStats, setLoadingStats] = useState(false);
   const [datosGrafica, setDatosGrafica] = useState(null);
+
+  // Modal de acciones para rutinas
+  const [modalAccionesVisible, setModalAccionesVisible] = useState(false);
+  const [rutinaSeleccionada, setRutinaSeleccionada] = useState<any>(null);
+
+  // Modal de resumen post-entrenamiento
+  const [modalResumenVisible, setModalResumenVisible] = useState(false);
+  const [resumenSesion, setResumenSesion] = useState<any>(null);
+  const [analisisIA, setAnalisisIA] = useState<string>('');
+  const [cargandoAnalisis, setCargandoAnalisis] = useState(false);
 
   // --- ESTADOS TEMPORIZADOR ---
   const [descansoActivo, setDescansoActivo] = useState(false);
@@ -261,7 +272,8 @@ export default function RutinasScreen() {
   const cargarTodo = async () => {
     if (!user) return;
     setCargando(true);
-    await Promise.all([cargarPlanIA(), cargarMisRutinas(), cargarCatalogoLocal()]);
+    await cargarCatalogoLocal();
+    await Promise.all([cargarPlanIA(), cargarMisRutinas()]);
     setCargando(false);
   };
 
@@ -328,12 +340,12 @@ export default function RutinasScreen() {
     return Object.keys(agrupados).sort().map(key => ({ title: key, data: agrupados[key] }));
   }, [catalogoLocal, filtroTexto, filtroMusculo]);
 
-  const normalizarRutina = (rutinaRaw, tituloDefecto) => {
+  const normalizarRutina = (rutinaRaw, tituloDefecto, catalogo = catalogoLocal) => {
     if (!rutinaRaw) return { titulo: tituloDefecto, ejercicios: [] };
     const tituloReal = rutinaRaw.titulo || rutinaRaw.nombre || tituloDefecto;
     const ejerciciosLimpios = rutinaRaw.ejercicios?.map(ej => {
         let nombreEj = "Ejercicio"; let seriesObj = 3; let repsObj = "8-12"; let tipObj = ""; let gifUrlObj = null;
-        if (typeof ej === 'string') { nombreEj = ej; } 
+        if (typeof ej === 'string') { nombreEj = ej; }
         else if (typeof ej === 'object') {
             nombreEj = ej.nombre || ej.name || ej.titulo || "Ejercicio";
             seriesObj = parseInt(ej.series) || 3;
@@ -342,7 +354,7 @@ export default function RutinasScreen() {
             gifUrlObj = ej.gifUrl || null; 
         }
         return {
-            nombre: nombreEj, tip: tipObj, gifUrl: gifUrlObj,
+            nombre: normalizarEjercicioConCatalogo(nombreEj, catalogo), tip: tipObj, gifUrl: gifUrlObj,
             metaInfo: { series: seriesObj.toString(), reps: repsObj.toString() }, 
             seriesDetalladas: ej.seriesDetalladas || Array.from({ length: seriesObj }, () => ({ kg: '', reps: '', completado: false }))
         };
@@ -352,7 +364,7 @@ export default function RutinasScreen() {
 
   const cargarHistorialPrevio = async (ejercicios) => {
     if (!ejercicios || ejercicios.length === 0 || !user) return;
-    const nombres = ejercicios.map(e => e.nombre);
+    const nombres = ejercicios.map(e => normalizarNombreEjercicio(e.nombre));
     const historialMap = {};
     for (const nombre of nombres) {
         const { data: ultFechas } = await supabase.from('historial_series').select('fecha').eq('user_id', user.id).eq('ejercicio', nombre).order('fecha', { ascending: false }).limit(1);
@@ -367,9 +379,10 @@ export default function RutinasScreen() {
 
   const abrirEstadisticas = async (nombreEjercicio) => {
     if (!user) return;
-    setModalStatsVisible(true); setLoadingStats(true); setStatsEjercicio({ nombre: nombreEjercicio, pr: 0, max1rm: 0 });
+    const nombreNorm = normalizarNombreEjercicio(nombreEjercicio);
+    setModalStatsVisible(true); setLoadingStats(true); setStatsEjercicio({ nombre: nombreNorm, pr: 0, max1rm: 0 });
     try {
-        const { data } = await supabase.from('historial_series').select('kg, reps, fecha').eq('user_id', user.id).eq('ejercicio', nombreEjercicio).order('fecha', { ascending: true });
+        const { data } = await supabase.from('historial_series').select('kg, reps, fecha').eq('user_id', user.id).eq('ejercicio', nombreNorm).order('fecha', { ascending: true });
         if (data && data.length > 0) {
             let maxPeso = 0; let max1RM = 0;
             const dataProcesada = data.map(item => {
@@ -386,6 +399,59 @@ export default function RutinasScreen() {
             } else setDatosGrafica(null);
         } else setDatosGrafica(null);
     } catch (e) { console.error(e); } finally { setLoadingStats(false); }
+  };
+
+  const generarAnalisisIA = async (datosEntrenamiento: any) => {
+    setCargandoAnalisis(true);
+    try {
+      const prompt = `Eres un coach de fitness motivador y experto. Analiza esta sesión de entrenamiento y genera un feedback personalizado.
+
+DATOS DE LA SESIÓN:
+- Rutina: ${datosEntrenamiento.nombreRutina}
+- Duración total: ${datosEntrenamiento.duracionMinutos} minutos
+- Ejercicios completados: ${datosEntrenamiento.ejerciciosCompletados}/${datosEntrenamiento.totalEjercicios}
+- Series completadas: ${datosEntrenamiento.seriesCompletadas}/${datosEntrenamiento.totalSeries}
+- Volumen total: ${datosEntrenamiento.volumenTotal} kg
+
+DETALLE POR EJERCICIO:
+${datosEntrenamiento.detalleEjercicios}
+
+HISTORIAL PREVIO (si disponible):
+${datosEntrenamiento.comparacionHistorial}
+
+Genera un análisis breve (máximo 150 palabras) con:
+1. 🎉 Un elogio específico sobre algo bien hecho
+2. 💪 Punto fuerte de la sesión
+3. 📈 Un consejo concreto para mejorar en el próximo entrenamiento
+
+Sé motivador pero honesto. Usa emojis con moderación. Responde SOLO con el análisis, sin introducciones.`;
+
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${GROQ_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: GROQ_MODEL,
+          messages: [{ role: "user", content: prompt }],
+          max_tokens: 300,
+          temperature: 0.7
+        })
+      });
+
+      const data = await response.json();
+      if (data.choices && data.choices[0]?.message?.content) {
+        setAnalisisIA(data.choices[0].message.content);
+      } else {
+        setAnalisisIA("¡Gran trabajo completando tu entrenamiento! 💪 Sigue así y verás resultados.");
+      }
+    } catch (error) {
+      console.error("Error análisis IA:", error);
+      setAnalisisIA("¡Excelente sesión! Has dado un paso más hacia tus objetivos. 🎯");
+    } finally {
+      setCargandoAnalisis(false);
+    }
   };
 
   const abrirRutina = (rutina, esPersonalizada, tituloOverride = null, soloEditar = false) => {
@@ -409,6 +475,69 @@ export default function RutinasScreen() {
       cargarHistorialPrevio(rutinaLimpia.ejercicios);
   };
 
+  const mostrarAccionesRutina = (rutina, esPersonalizada, titulo = null) => {
+      if (!rutina || typeof rutina !== 'object' || !rutina.ejercicios || rutina.ejercicios.length === 0) {
+          Alert.alert("Descanso", "Día de descanso programado.");
+          return;
+      }
+      const rutinaLimpia = normalizarRutina(rutina, titulo || rutina.nombre || rutina.titulo);
+      rutinaLimpia.esPersonalizada = esPersonalizada;
+      if (esPersonalizada) rutinaLimpia.id = rutina.id;
+      setRutinaSeleccionada(rutinaLimpia);
+      setModalAccionesVisible(true);
+  };
+
+  const copiarRutinaAPersonalizada = async () => {
+      if (!rutinaSeleccionada || !user) return;
+      setCargando(true);
+      try {
+          const ejerciciosCopia = rutinaSeleccionada.ejercicios.map(e => ({
+              nombre: normalizarNombreEjercicio(e.nombre),
+              series: e.metaInfo?.series || "3",
+              reps: e.metaInfo?.reps || "10-12",
+              tip: e.tip || "",
+              gifUrl: e.gifUrl || null
+          }));
+
+          const { error } = await supabase
+              .from('rutinas_personalizadas')
+              .insert({
+                  user_id: user.id,
+                  nombre: `${rutinaSeleccionada.titulo} (Copia)`,
+                  ejercicios: ejerciciosCopia
+              });
+
+          if (!error) {
+              setModalAccionesVisible(false);
+              setRutinaSeleccionada(null);
+              await cargarMisRutinas();
+              Alert.alert("Copiada", "Rutina añadida a 'Mis Rutinas'. Puedes editarla a tu gusto.");
+          } else {
+              Alert.alert("Error", "No se pudo copiar la rutina.");
+          }
+      } catch (e) {
+          Alert.alert("Error", e.message);
+      } finally {
+          setCargando(false);
+      }
+  };
+
+  const iniciarDesdeModal = () => {
+      setModalAccionesVisible(false);
+      if (rutinaSeleccionada) {
+          abrirRutina(rutinaSeleccionada, rutinaSeleccionada.esPersonalizada, rutinaSeleccionada.titulo, false);
+      }
+      setRutinaSeleccionada(null);
+  };
+
+  const editarDesdeModal = () => {
+      setModalAccionesVisible(false);
+      if (rutinaSeleccionada) {
+          abrirRutina(rutinaSeleccionada, rutinaSeleccionada.esPersonalizada, rutinaSeleccionada.titulo, true);
+      }
+      setRutinaSeleccionada(null);
+  };
+
   const crearNuevaRutina = async () => {
       if (!nombreNuevaRutina.trim() || !user) return;
       const nueva = { user_id: user.id, nombre: nombreNuevaRutina, ejercicios: [] };
@@ -423,7 +552,7 @@ export default function RutinasScreen() {
   const guardarCambiosRutinaActiva = async () => {
       if (!rutinaActiva || !user) return;
       if (rutinaActiva.esPersonalizada && rutinaActiva.id) {
-          const ejerciciosParaGuardar = rutinaActiva.ejercicios.map(e => ({ nombre: e.nombre, series: e.metaInfo?.series, reps: e.metaInfo?.reps, tip: e.tip, gifUrl: e.gifUrl }));
+          const ejerciciosParaGuardar = rutinaActiva.ejercicios.map(e => ({ nombre: normalizarNombreEjercicio(e.nombre), series: e.metaInfo?.series, reps: e.metaInfo?.reps, tip: e.tip, gifUrl: e.gifUrl }));
           await supabase.from('rutinas_personalizadas').update({ ejercicios: ejerciciosParaGuardar }).eq('id', rutinaActiva.id).eq('user_id', user.id);
           Alert.alert("Guardado", "Rutina actualizada."); cargarMisRutinas();
       } else { Alert.alert("Info", "Cambios temporales guardados en sesión."); }
@@ -455,17 +584,93 @@ export default function RutinasScreen() {
                 setCargando(true);
                 try {
                     const hoyISO = new Date().toISOString().split('T')[0];
-                    const seriesParaGuardar = [];
-                    rutinaFinalizada.ejercicios.forEach(ej => {
-                        ej.seriesDetalladas.forEach((serie, index) => {
-                            if (serie.kg && serie.reps) seriesParaGuardar.push({ user_id: user.id, fecha: hoyISO, ejercicio: ej.nombre, serie_index: index + 1, kg: parseFloat(serie.kg), reps: parseFloat(serie.reps) });
+                    const seriesParaGuardar: any[] = [];
+                    let volumenTotal = 0;
+                    let seriesCompletadas = 0;
+                    let totalSeries = 0;
+                    let ejerciciosCompletados = 0;
+
+                    // Calcular estadísticas y preparar datos
+                    const detalleEjercicios: string[] = [];
+
+                    rutinaFinalizada.ejercicios.forEach((ej: any) => {
+                        let seriesEjCompletadas = 0;
+                        let volumenEj = 0;
+
+                        ej.seriesDetalladas.forEach((serie: any, index: number) => {
+                            totalSeries++;
+                            if (serie.kg && serie.reps) {
+                                seriesParaGuardar.push({
+                                    user_id: user.id,
+                                    fecha: hoyISO,
+                                    ejercicio: normalizarNombreEjercicio(ej.nombre),
+                                    serie_index: index + 1,
+                                    kg: parseFloat(serie.kg),
+                                    reps: parseFloat(serie.reps)
+                                });
+                                volumenTotal += parseFloat(serie.kg) * parseFloat(serie.reps);
+                                volumenEj += parseFloat(serie.kg) * parseFloat(serie.reps);
+                                seriesCompletadas++;
+                                seriesEjCompletadas++;
+                            }
                         });
+
+                        if (seriesEjCompletadas > 0) {
+                            ejerciciosCompletados++;
+                            detalleEjercicios.push(`- ${ej.nombre}: ${seriesEjCompletadas} series, ${Math.round(volumenEj)}kg volumen`);
+                        }
                     });
-                    if (seriesParaGuardar.length > 0) await supabase.from('historial_series').insert(seriesParaGuardar);
+
+                    // Comparación con historial
+                    let comparacionHistorial = "Sin datos previos para comparar";
+                    const ejerciciosConHistorial = Object.keys(historialPrevio);
+                    if (ejerciciosConHistorial.length > 0) {
+                        const comparaciones: string[] = [];
+                        ejerciciosConHistorial.slice(0, 3).forEach(nombre => {
+                            const previo = historialPrevio[nombre];
+                            if (previo && previo.length > 0) {
+                                const pesoMaxPrevio = Math.max(...previo.map((s: any) => s.kg));
+                                comparaciones.push(`${nombre}: máx anterior ${pesoMaxPrevio}kg`);
+                            }
+                        });
+                        if (comparaciones.length > 0) {
+                            comparacionHistorial = comparaciones.join(', ');
+                        }
+                    }
+
+                    // Guardar en base de datos
+                    if (seriesParaGuardar.length > 0) {
+                        await supabase.from('historial_series').insert(seriesParaGuardar);
+                    }
                     await supabase.from('calendario_acciones').upsert({ user_id: user.id, fecha: hoyISO, estado: 'completado' });
-                    Alert.alert("Hecho", "Entrenamiento registrado.");
+
+                    // Preparar resumen
+                    const duracionMinutos = Math.round(tiempoFinal / 60);
+                    const resumen = {
+                        nombreRutina: rutinaFinalizada.titulo,
+                        duracionMinutos,
+                        duracionFormateada: formatearTiempo(tiempoFinal),
+                        ejerciciosCompletados,
+                        totalEjercicios: rutinaFinalizada.ejercicios.length,
+                        seriesCompletadas,
+                        totalSeries,
+                        volumenTotal: Math.round(volumenTotal),
+                        detalleEjercicios: detalleEjercicios.join('\n'),
+                        comparacionHistorial
+                    };
+
+                    setResumenSesion(resumen);
                     setVistaEntrenoExpandida(false);
-                } catch (e) { Alert.alert("Error", e.message); } finally { setCargando(false); }
+                    setModalResumenVisible(true);
+
+                    // Generar análisis IA en paralelo
+                    generarAnalisisIA(resumen);
+
+                } catch (e: any) {
+                    Alert.alert("Error", e.message);
+                } finally {
+                    setCargando(false);
+                }
             });
         }}
     ]);
@@ -473,7 +678,7 @@ export default function RutinasScreen() {
 
   const seleccionarDeBiblioteca = (ejercicio, esDeAPI = false) => {
     setModalBibliotecaVisible(false); setFiltroTexto(''); setMostrandoInputManual(false); setNuevoEjercicioManual(''); setFiltroMusculo('Todos'); setResultadosAPI([]);
-    const nombre = esDeAPI ? ejercicio.name.charAt(0).toUpperCase() + ejercicio.name.slice(1) : ejercicio.nombre;
+    const nombre = esDeAPI ? normalizarEjercicioConCatalogo(ejercicio.name, catalogoLocal) : ejercicio.nombre;
     const musculo = esDeAPI ? ejercicio.bodyPart : ejercicio.musculo;
     const gif = esDeAPI ? ejercicio.gifUrl : null;
     const nuevo = { nombre, tip: musculo ? `Músculo: ${musculo}` : "", gifUrl: gif, metaInfo: { series: "3", reps: "10-12" }, seriesDetalladas: [{ kg: '', reps: '', completado: false }, { kg: '', reps: '', completado: false }, { kg: '', reps: '', completado: false }] };
@@ -486,8 +691,10 @@ export default function RutinasScreen() {
   };
 
   const agregarEjercicioManual = () => {
-      if (!nuevoEjercicioManual.trim()) return;
-      seleccionarDeBiblioteca({ nombre: nuevoEjercicioManual, musculo: "Personalizado" }, false);
+      const raw = nuevoEjercicioManual.trim() || filtroTexto.trim();
+      if (!raw) return;
+      const nombre = normalizarEjercicioConCatalogo(raw, catalogoLocal);
+      seleccionarDeBiblioteca({ nombre, musculo: "Personalizado" }, false);
   };
 
   const actualizarSerie = (eIdx, sIdx, campo, val) => { 
@@ -568,11 +775,11 @@ export default function RutinasScreen() {
 
                 <Text style={[styles.seccionTitulo, {color: colores.texto}]}>Plan Inteligente</Text>
                 {rutinaHoy ? (
-                    <TouchableOpacity style={styles.cardHoy} onPress={() => abrirRutina(rutinaHoy, false, `Rutina de Hoy`)}>
+                    <TouchableOpacity style={styles.cardHoy} onPress={() => mostrarAccionesRutina(rutinaHoy, false, rutinaHoy.titulo)}>
                         <View style={styles.badgeHoy}><Text style={styles.txtBadge}>HOY</Text></View>
                         <Text style={styles.tituloCardHoy}>{rutinaHoy.titulo}</Text>
                         <Text style={styles.subtituloCard}>{rutinaHoy.ejercicios.length} Ejercicios • {diaHoyNombre}</Text>
-                        <Ionicons name="play-circle" size={40} color="#007AFF" style={{position:'absolute', right:20, bottom:20}} />
+                        <Ionicons name="chevron-forward" size={28} color="rgba(255,255,255,0.7)" style={{position:'absolute', right:20, top:'50%', marginTop:-14}} />
                     </TouchableOpacity>
                 ) : <View style={[styles.cardVacia, {backgroundColor: colores.tarjeta}]}><Text style={{color: colores.subtexto}}>Descanso programado.</Text></View>}
 
@@ -580,7 +787,7 @@ export default function RutinasScreen() {
                     {Object.keys(planSemanal).filter(d => d.toLowerCase() !== diaHoyNombre.toLowerCase()).map((dia) => {
                             const rd = planSemanal[dia]; const off = !rd.ejercicios || rd.ejercicios.length === 0 || rd.titulo === "Descanso";
                             return (
-                                <TouchableOpacity key={dia} style={[styles.itemSemana, {borderColor: colores.borde}]} onPress={() => abrirRutina(rd, false, rd.titulo || dia)}>
+                                <TouchableOpacity key={dia} style={[styles.itemSemana, {borderColor: colores.borde}]} onPress={() => mostrarAccionesRutina(rd, false, rd.titulo || dia)}>
                                     <View><Text style={[styles.nombreRutinaLista, {color: off ? colores.subtexto : colores.texto}]}>{rd.titulo || "Rutina"}</Text><Text style={[styles.diaSemanaSmall, {color: colores.subtexto}]}>{dia}</Text></View>
                                     <View style={{flexDirection:'row', alignItems:'center'}}>{!off && <Text style={{marginRight:10, color: colores.primario, fontSize:12}}>{rd.ejercicios?.length} ej.</Text>}<Ionicons name="chevron-forward" size={16} color={colores.subtexto} /></View>
                                 </TouchableOpacity>
@@ -592,24 +799,24 @@ export default function RutinasScreen() {
                     <Text style={[styles.seccionTitulo, {color: colores.texto}]}>Mis Rutinas</Text>
                     <TouchableOpacity onPress={() => setModalNombreRutinaVisible(true)}><Text style={{color: colores.primario, fontWeight:'bold'}}>+ Crear Nueva</Text></TouchableOpacity>
                 </View>
-                {misRutinas.map((rutina) => (
-                    <View key={rutina.id} style={[styles.cardPersonalizada, {backgroundColor: colores.tarjeta}]}>
+                {misRutinas.length === 0 ? (
+                    <View style={[styles.cardVacia, {backgroundColor: colores.tarjeta}]}>
+                        <Ionicons name="barbell-outline" size={40} color={colores.subtexto} style={{marginBottom: 10}} />
+                        <Text style={{color: colores.subtexto, textAlign: 'center'}}>No tienes rutinas personalizadas.{"\n"}Crea una o copia del Plan Inteligente.</Text>
+                    </View>
+                ) : misRutinas.map((rutina) => (
+                    <TouchableOpacity key={rutina.id} style={[styles.cardPersonalizada, {backgroundColor: colores.tarjeta}]} onPress={() => mostrarAccionesRutina(rutina, true, rutina.nombre)} activeOpacity={0.7}>
                         <View style={{flex:1}}>
                             <Text style={[styles.tituloPersonalizada, {color: colores.texto}]}>{rutina.nombre}</Text>
                             <Text style={[styles.subPersonalizada, {color: colores.subtexto}]}>{rutina.ejercicios?.length || 0} Ejercicios</Text>
-                            <View style={{flexDirection:'row', gap:10, marginTop:10}}>
-                                <TouchableOpacity onPress={() => abrirRutina(rutina, true, null, true)} style={{backgroundColor: colores.inputBg, paddingHorizontal:15, paddingVertical:8, borderRadius:8, flexDirection:'row', alignItems:'center', gap:5}}>
-                                    <Ionicons name="create-outline" size={16} color={colores.texto} />
-                                    <Text style={{color: colores.texto, fontWeight:'600', fontSize:13}}>Editar</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity onPress={() => abrirRutina(rutina, true, null, false)} style={{backgroundColor: colores.primario, paddingHorizontal:15, paddingVertical:8, borderRadius:8, flexDirection:'row', alignItems:'center', gap:5}}>
-                                    <Ionicons name="play" size={16} color="white" />
-                                    <Text style={{color: 'white', fontWeight:'600', fontSize:13}}>Entrenar</Text>
-                                </TouchableOpacity>
-                            </View>
                         </View>
-                        <TouchableOpacity onPress={() => eliminarRutinaPersonalizada(rutina.id)} style={{padding:10}}><Ionicons name="trash-outline" size={20} color="#FF3B30" /></TouchableOpacity>
-                    </View>
+                        <View style={{flexDirection:'row', alignItems:'center', gap: 10}}>
+                            <TouchableOpacity onPress={(e) => { e.stopPropagation(); eliminarRutinaPersonalizada(rutina.id); }} style={{padding:10}}>
+                                <Ionicons name="trash-outline" size={20} color="#FF3B30" />
+                            </TouchableOpacity>
+                            <Ionicons name="chevron-forward" size={20} color={colores.subtexto} />
+                        </View>
+                    </TouchableOpacity>
                 ))}
             </ScrollView>
             <Modal visible={modalNombreRutinaVisible} transparent animationType="fade">
@@ -619,6 +826,152 @@ export default function RutinasScreen() {
                 </View></View>
             </Modal>
             <Modal visible={modalInfoVisible} transparent animationType="fade"><View style={styles.modalOverlay}><View style={[styles.modalContentSmall, {backgroundColor: colores.tarjeta}]}><Text style={[styles.modalTitle, {color: colores.texto}]}>Gestión de Rutinas</Text><Text style={{marginBottom:20, lineHeight:20, color: colores.subtexto}}>• Plan IA: Tu rutina asignada automáticamente.{"\n"}• Mis Rutinas: Crea y guarda tus propios entrenamientos.{"\n"}• Pulsa una rutina para iniciar el entrenamiento y registrar pesos.</Text><TouchableOpacity style={styles.btnControl} onPress={() => setModalInfoVisible(false)}><Text style={{fontWeight:'bold'}}>Cerrar</Text></TouchableOpacity></View></View></Modal>
+
+            {/* Modal de Acciones para Rutinas */}
+            <Modal visible={modalAccionesVisible} transparent animationType="fade">
+                <TouchableOpacity
+                    style={styles.modalOverlay}
+                    activeOpacity={1}
+                    onPress={() => {
+                        setModalAccionesVisible(false);
+                        setRutinaSeleccionada(null);
+                    }}
+                >
+                    <View style={[styles.modalAcciones, {backgroundColor: colores.tarjeta}]}>
+                        <Text style={[styles.modalTitle, {color: colores.texto, marginBottom: 5}]}>
+                            {rutinaSeleccionada?.titulo || "Rutina"}
+                        </Text>
+                        <Text style={{color: colores.subtexto, marginBottom: 20, textAlign: 'center'}}>
+                            {rutinaSeleccionada?.ejercicios?.length || 0} ejercicios
+                        </Text>
+
+                        <TouchableOpacity
+                            style={[styles.btnAccion, {backgroundColor: '#34C759'}]}
+                            onPress={iniciarDesdeModal}
+                        >
+                            <Ionicons name="play-circle" size={24} color="white" />
+                            <Text style={styles.txtBtnAccion}>Iniciar Entrenamiento</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[styles.btnAccion, {backgroundColor: colores.primario}]}
+                            onPress={editarDesdeModal}
+                        >
+                            <Ionicons name="create-outline" size={24} color="white" />
+                            <Text style={styles.txtBtnAccion}>Editar Rutina</Text>
+                        </TouchableOpacity>
+
+                        {!rutinaSeleccionada?.esPersonalizada && (
+                            <TouchableOpacity
+                                style={[styles.btnAccion, {backgroundColor: '#FF9500'}]}
+                                onPress={copiarRutinaAPersonalizada}
+                            >
+                                <Ionicons name="copy-outline" size={24} color="white" />
+                                <Text style={styles.txtBtnAccion}>Copiar a Mis Rutinas</Text>
+                            </TouchableOpacity>
+                        )}
+
+                        <TouchableOpacity
+                            style={[styles.btnAccionCancel, {backgroundColor: colores.inputBg}]}
+                            onPress={() => {
+                                setModalAccionesVisible(false);
+                                setRutinaSeleccionada(null);
+                            }}
+                        >
+                            <Text style={{color: colores.texto, fontWeight: '600'}}>Cancelar</Text>
+                        </TouchableOpacity>
+                    </View>
+                </TouchableOpacity>
+            </Modal>
+
+            {/* Modal de Resumen Post-Entrenamiento */}
+            <Modal visible={modalResumenVisible} animationType="slide" presentationStyle="pageSheet">
+                <SafeAreaView style={[styles.modalContainer, {backgroundColor: colores.fondo}]}>
+                    <ScrollView contentContainerStyle={{padding: 20}}>
+                        {/* Header */}
+                        <View style={{alignItems: 'center', marginBottom: 25}}>
+                            <Text style={{fontSize: 50, marginBottom: 10}}>🎉</Text>
+                            <Text style={[styles.titulo, {color: colores.texto, textAlign: 'center'}]}>
+                                ¡Entrenamiento Completado!
+                            </Text>
+                            <Text style={{color: colores.subtexto, fontSize: 16, marginTop: 5}}>
+                                {resumenSesion?.nombreRutina}
+                            </Text>
+                        </View>
+
+                        {/* Estadísticas principales */}
+                        <View style={[styles.resumenCard, {backgroundColor: colores.tarjeta}]}>
+                            <View style={styles.resumenRow}>
+                                <View style={styles.resumenStat}>
+                                    <Ionicons name="time-outline" size={28} color={colores.primario} />
+                                    <Text style={[styles.resumenValor, {color: colores.texto}]}>
+                                        {resumenSesion?.duracionFormateada}
+                                    </Text>
+                                    <Text style={[styles.resumenLabel, {color: colores.subtexto}]}>Duración</Text>
+                                </View>
+                                <View style={styles.resumenStat}>
+                                    <Ionicons name="barbell-outline" size={28} color="#34C759" />
+                                    <Text style={[styles.resumenValor, {color: colores.texto}]}>
+                                        {resumenSesion?.ejerciciosCompletados}/{resumenSesion?.totalEjercicios}
+                                    </Text>
+                                    <Text style={[styles.resumenLabel, {color: colores.subtexto}]}>Ejercicios</Text>
+                                </View>
+                            </View>
+                            <View style={styles.resumenRow}>
+                                <View style={styles.resumenStat}>
+                                    <Ionicons name="checkmark-circle-outline" size={28} color="#FF9500" />
+                                    <Text style={[styles.resumenValor, {color: colores.texto}]}>
+                                        {resumenSesion?.seriesCompletadas}/{resumenSesion?.totalSeries}
+                                    </Text>
+                                    <Text style={[styles.resumenLabel, {color: colores.subtexto}]}>Series</Text>
+                                </View>
+                                <View style={styles.resumenStat}>
+                                    <Ionicons name="flame-outline" size={28} color="#FF3B30" />
+                                    <Text style={[styles.resumenValor, {color: colores.texto}]}>
+                                        {resumenSesion?.volumenTotal?.toLocaleString()}
+                                    </Text>
+                                    <Text style={[styles.resumenLabel, {color: colores.subtexto}]}>Kg totales</Text>
+                                </View>
+                            </View>
+                        </View>
+
+                        {/* Análisis de IA */}
+                        <View style={[styles.resumenCard, {backgroundColor: colores.tarjeta, marginTop: 15}]}>
+                            <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 12}}>
+                                <Ionicons name="sparkles" size={22} color="#AF52DE" />
+                                <Text style={{color: colores.texto, fontWeight: 'bold', fontSize: 16, marginLeft: 8}}>
+                                    Análisis del Coach IA
+                                </Text>
+                            </View>
+
+                            {cargandoAnalisis ? (
+                                <View style={{alignItems: 'center', padding: 20}}>
+                                    <ActivityIndicator size="large" color={colores.primario} />
+                                    <Text style={{color: colores.subtexto, marginTop: 10}}>Analizando tu sesión...</Text>
+                                </View>
+                            ) : (
+                                <Text style={{color: colores.texto, lineHeight: 22, fontSize: 15}}>
+                                    {analisisIA}
+                                </Text>
+                            )}
+                        </View>
+
+                        {/* Botón cerrar */}
+                        <TouchableOpacity
+                            style={[styles.btnTerminar, {marginTop: 25}]}
+                            onPress={() => {
+                                setModalResumenVisible(false);
+                                setResumenSesion(null);
+                                setAnalisisIA('');
+                            }}
+                        >
+                            <Text style={styles.txtTerminar}>CONTINUAR</Text>
+                        </TouchableOpacity>
+
+                        <View style={{height: 40}} />
+                    </ScrollView>
+                </SafeAreaView>
+            </Modal>
         </SafeAreaView>
     );
   }
@@ -702,6 +1055,7 @@ export default function RutinasScreen() {
                     guardarCambiosRutinaActiva();
                     setVistaEntrenoExpandida(false);
                     setModoEdicion(false);
+                    setRutinaActiva(null); // Limpiar para que no aparezca como "en curso"
                 }}>
                     <Text style={styles.txtTerminar}>GUARDAR Y CERRAR</Text>
                 </TouchableOpacity>
@@ -924,5 +1278,18 @@ const styles = StyleSheet.create({
   timerControlBtn: { width: 40, height: 40, backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   btnControlTime: { width: 50, height: 50, borderRadius: 25, justifyContent: 'center', alignItems: 'center' },
   btnSaveMain: { padding: 15, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  btnCancelMain: { padding: 15, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }
+  btnCancelMain: { padding: 15, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+
+  // Estilos Modal Acciones
+  modalAcciones: { width: '85%', padding: 25, borderRadius: 20, alignItems: 'center' },
+  btnAccion: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 15, borderRadius: 12, width: '100%', marginBottom: 10, gap: 10 },
+  txtBtnAccion: { color: 'white', fontWeight: 'bold', fontSize: 16 },
+  btnAccionCancel: { padding: 15, borderRadius: 12, width: '100%', alignItems: 'center', marginTop: 5 },
+
+  // Estilos Modal Resumen
+  resumenCard: { borderRadius: 16, padding: 20, shadowColor: '#000', shadowOpacity: 0.05, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
+  resumenRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 15 },
+  resumenStat: { alignItems: 'center', flex: 1 },
+  resumenValor: { fontSize: 24, fontWeight: 'bold', marginTop: 8 },
+  resumenLabel: { fontSize: 12, marginTop: 4, textTransform: 'uppercase' }
 });
